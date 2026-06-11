@@ -1,0 +1,55 @@
+.main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 5rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
+.soon {
+  text-align: center;
+  animation: fadeUp 0.5s ease both;
+}
+
+.icon {
+  font-size: 3rem;
+  margin-bottom: 1.5rem;
+  filter: grayscale(0.3);
+}
+
+.soon h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 3vw, 3rem);
+  font-weight: 300;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin-bottom: 0.75rem;
+}
+
+.soon p {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  max-width: 420px;
+  line-height: 1.6;
+  margin-bottom: 1.5rem;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 0.3rem 0.9rem;
+  border-radius: 20px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

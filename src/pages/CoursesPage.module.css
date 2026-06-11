@@ -1,0 +1,239 @@
+.main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 2.5vw, 2.2rem);
+  font-weight: 300;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.select {
+  padding: 0.5rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  min-width: 220px;
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.btnGroup {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btnExport {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.btnExport:hover:not(:disabled) {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btnExport:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Empty / loading states ───────────────────────── */
+.empty {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: var(--text-secondary);
+}
+
+.emptyIcon {
+  font-size: 2.8rem;
+  margin-bottom: 1rem;
+}
+
+.emptyTitle {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 0.4rem;
+}
+
+.emptyDesc {
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.skeleton {
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 1.5rem;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+
+/* ── Shopping list ─────────────────────────────────── */
+.meta {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  margin-bottom: 1.5rem;
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.metaItem strong {
+  color: var(--text-primary);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.category {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  animation: fadeUp 0.3s ease both;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.categoryHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 1.1rem;
+  background: var(--accent-dim);
+  border-bottom: 1px solid var(--accent-border);
+}
+
+.categoryIcon {
+  font-size: 1rem;
+}
+
+.categoryName {
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent);
+}
+
+.categoryCount {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table thead th {
+  padding: 0.55rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.table thead th:last-child {
+  text-align: right;
+}
+
+.table tbody tr:not(:last-child) td {
+  border-bottom: 1px solid var(--border);
+}
+
+.table tbody tr:hover td {
+  background: var(--accent-dim);
+}
+
+.table tbody td {
+  padding: 0.65rem 1rem;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  transition: background 0.1s;
+}
+
+.qty {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.unit {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  width: 60px;
+}
+
+/* ── Summary footer ────────────────────────────────── */
+.summary {
+  margin-top: 1.5rem;
+  padding: 0.9rem 1.2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  display: flex;
+  gap: 2rem;
+}
+
+.summary strong {
+  color: var(--text-primary);
+}

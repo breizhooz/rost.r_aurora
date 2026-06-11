@@ -1,0 +1,412 @@
+.main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 2rem 5rem;
+}
+
+/* ── Top bar ── */
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  animation: fadeUp 0.3s ease both;
+}
+
+.backLink {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.backLink:hover { color: var(--accent); }
+
+.topActions {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.btnEdit {
+  padding: 0.4rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btnEdit:hover { background: var(--accent); color: #000; }
+
+.btnSave {
+  padding: 0.4rem 1rem;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--accent);
+  color: #000;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btnSave:disabled { opacity: 0.5; cursor: default; }
+
+.btnCancel {
+  padding: 0.4rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-card);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btnCancel:hover:not(:disabled) { border-color: var(--text-secondary); }
+.btnCancel:disabled { opacity: 0.5; cursor: default; }
+
+.saveError {
+  background: rgba(220, 50, 50, 0.12);
+  border: 1px solid rgba(220, 50, 50, 0.4);
+  border-radius: var(--radius);
+  padding: 0.6rem 1rem;
+  font-size: 0.82rem;
+  color: #f87171;
+  margin-bottom: 1rem;
+}
+
+/* ── Hero ── */
+.hero {
+  width: 100%;
+  max-height: 420px;
+  overflow: hidden;
+  border-radius: var(--radius);
+  margin-bottom: 1.5rem;
+  animation: fadeUp 0.4s ease both;
+  animation-delay: 0.05s;
+}
+.hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ── Title ── */
+.titleRow {
+  margin-bottom: 0.75rem;
+  animation: fadeUp 0.4s ease both;
+  animation-delay: 0.08s;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  font-weight: 300;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.inputTitle {
+  width: 100%;
+  font-family: var(--font-display);
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  font-weight: 300;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.75rem;
+  letter-spacing: -0.02em;
+}
+
+/* ── Badges ── */
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  animation: fadeUp 0.4s ease both;
+  animation-delay: 0.1s;
+}
+
+.badge {
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.badgeCourse  { background: rgba(var(--accent-rgb, 74,222,128), 0.12); color: var(--accent); border: 1px solid rgba(var(--accent-rgb, 74,222,128), 0.3); }
+.badgeDiff    { background: rgba(251,191,36,0.1); color: #fbbf24; border: 1px solid rgba(251,191,36,0.25); }
+.badgeCuisine { background: rgba(99,102,241,0.1); color: #818cf8; border: 1px solid rgba(99,102,241,0.25); }
+/* Coaching : recette poussée par le gestionnaire (coach) dans le compte du client. */
+.badgeCoach   { background: rgba(255,107,0,0.12); color: #ff8a3d; border: 1px solid rgba(255,107,0,0.3); text-transform: none; letter-spacing: 0.02em; }
+
+/* ── Two-column body ── */
+.body {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 2rem;
+  animation: fadeUp 0.45s ease both;
+  animation-delay: 0.12s;
+}
+
+/* ── Content column ── */
+.content { display: flex; flex-direction: column; gap: 2rem; }
+
+.section {}
+
+.sectionLabel {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  margin: 0 0 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.sectionLabel::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.servingHint {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.text {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.65;
+  margin: 0;
+}
+
+.instructions {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.textarea {
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  line-height: 1.6;
+  padding: 0.65rem 0.85rem;
+  resize: vertical;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.textarea:focus { outline: none; border-color: var(--accent); }
+
+/* ── Ingredients ── */
+.ingredientList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.ingredientItem {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+.ingredientItem::before {
+  content: '•';
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.qty {
+  color: var(--text-muted);
+  min-width: 60px;
+  text-align: right;
+}
+
+.ingName {
+  color: var(--text-primary);
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.sideSection {}
+
+.sideSectionLabel {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  margin: 0 0 0.75rem;
+}
+
+.infoList { margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.55rem; }
+
+.infoRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+}
+.infoRow dt { color: var(--text-muted); }
+.infoRow dd { color: var(--text-primary); margin: 0; font-weight: 500; }
+
+.inputSmall {
+  width: 80px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: calc(var(--radius) / 2);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  padding: 0.3rem 0.5rem;
+  text-align: right;
+}
+.inputSmall:focus { outline: none; border-color: var(--accent); }
+
+.select {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: calc(var(--radius) / 2);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  padding: 0.3rem 0.5rem;
+  max-width: 140px;
+}
+.select:focus { outline: none; border-color: var(--accent); }
+
+/* ── Tags ── */
+.tagEditor { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.tagChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.tagChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.73rem;
+  color: var(--text-secondary);
+}
+
+.tagRemove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0;
+  transition: color 0.1s;
+}
+.tagRemove:hover { color: #f87171; }
+
+.inputTag {
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: calc(var(--radius) / 2);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  padding: 0.35rem 0.6rem;
+  box-sizing: border-box;
+}
+.inputTag:focus { outline: none; border-color: var(--accent); }
+
+.sourceLink {
+  font-size: 0.82rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+.sourceLink:hover { text-decoration: underline; }
+
+.muted {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+/* ── Skeleton loading ── */
+.skeletonHero {
+  width: 100%;
+  height: 320px;
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  animation: pulse 1.5s ease-in-out infinite;
+  margin-bottom: 1.5rem;
+}
+
+.skeletonContent {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.skeletonLine {
+  height: 1.2rem;
+  border-radius: 4px;
+  background: var(--bg-card);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.skeletonBlock {
+  height: 120px;
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* ── Error state ── */
+.errorState {
+  text-align: center;
+  padding: 5rem 2rem;
+  color: var(--text-muted);
+}
+.errorState p { margin-bottom: 1.5rem; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 768px) {
+  .main { padding: 1.5rem 1rem 3rem; }
+  .body { grid-template-columns: 1fr; }
+  .sidebar { order: -1; }
+}

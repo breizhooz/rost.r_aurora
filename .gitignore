@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+
+# Caches
+.ruff_cache/
+
+# Environnement local
+.env
+*.local
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store

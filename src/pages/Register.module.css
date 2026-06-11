@@ -1,0 +1,219 @@
+.switchLink {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
+
+.switchLink a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.switchLink a:hover {
+  color: var(--accent-light);
+}
+
+/* ── Stepper ── */
+.stepper {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  position: relative;
+}
+
+.stepperLine {
+  position: absolute;
+  top: 11px;
+  left: 12px;
+  right: 12px;
+  height: 1px;
+  background: var(--border);
+  z-index: 0;
+}
+
+.stepItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  position: relative;
+  z-index: 1;
+}
+
+.stepNum {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.25s, background 0.25s, color 0.25s;
+  flex-shrink: 0;
+}
+
+.stepNumActive {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #03231a;
+}
+
+.stepNumDone {
+  border-color: var(--accent);
+  background: transparent;
+  color: var(--accent);
+}
+
+.stepLabel {
+  font-size: 0.58rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.stepLabelActive {
+  color: var(--accent);
+}
+
+/* ── Field grid ── */
+.fieldGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.fieldFull {
+  grid-column: 1 / -1;
+}
+
+/* ── Navigation buttons ── */
+.navBtns {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.4rem;
+}
+
+.prevBtn {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.9rem 1.25rem;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+  min-height: 48px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.prevBtn:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.prevBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Skip button ── */
+.skipBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-family: var(--font-body);
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.2s;
+}
+.skipBtn:hover:not(:disabled) { color: var(--text-secondary); }
+.skipBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Password strength indicators ── */
+.pwdChecks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.3rem 1rem;
+  margin-top: 0.4rem;
+}
+
+.pwdCheckOk,
+.pwdCheckFail {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  transition: color 0.2s;
+}
+.pwdCheckOk   { color: var(--accent); }
+.pwdCheckFail { color: var(--text-muted); }
+
+/* ── Sports tag input ── */
+.tagInputRow {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.tagAddBtn {
+  background: var(--accent);
+  color: #03231a;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0 1rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+  min-height: 44px;
+}
+.tagAddBtn:disabled { opacity: 0.35; cursor: not-allowed; }
+.tagAddBtn:hover:not(:disabled) { opacity: 0.85; }
+
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.tagItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 20px;
+  background: var(--accent-dim);
+  color: var(--accent-light);
+  border: 1px solid var(--accent-border);
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.tagRemove {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.6rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.65;
+}
+.tagRemove:hover { opacity: 1; }
