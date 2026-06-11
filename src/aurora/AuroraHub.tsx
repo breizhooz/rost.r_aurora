@@ -4,10 +4,10 @@ import AuroraRecipeCreateModal from './AuroraRecipeCreateModal';
 import AuroraScanModal from './AuroraScanModal';
 import {
   getMe, getCrawlerSources, createCrawlerSource, deleteCrawlerSource, triggerCrawl, getCrawlerResults,
-  crawlOneshot, getCrawlOneshotStatus, getNotifications, rejectCrawlResult, resetCrawlResult, hydrateResult, commitResult, listMyRecipes,
+  crawlOneshot, getCrawlOneshotStatus, rejectCrawlResult, resetCrawlResult, hydrateResult, commitResult, listMyRecipes,
 } from '../api/endpoints';
 import type {
-  UserOut, CrawlType, CrawlSourceResponse, CrawlResultResponse, RecipeHydrated, RecipeCommitRequest, HydratedIngredient, RecipeResponse, NotificationItem,
+  UserOut, CrawlType, CrawlSourceResponse, CrawlResultResponse, RecipeHydrated, RecipeCommitRequest, HydratedIngredient, RecipeResponse,
 } from '../types';
 
 function initials(email: string) {
@@ -98,7 +98,6 @@ export default function AuroraHub() {
   const [srcValue, setSrcValue] = useState(''); const [srcFreq, setSrcFreq] = useState(24);
   const [submittingSrc, setSubmittingSrc] = useState(false); const [srcError, setSrcError] = useState('');
   const [quickUrl, setQuickUrl] = useState(''); const [quickLoading, setQuickLoading] = useState(false); const [quickMsg, setQuickMsg] = useState('');
-  const [notifs, setNotifs] = useState<NotificationItem[]>([]); const [dismissedNotifs, setDismissedNotifs] = useState<Set<string>>(new Set());
 
   const closeModal = useCallback(() => {
     setModalResult(null); setModalStep('raw'); setHydrated(null); setRecipe(null);
@@ -118,13 +117,10 @@ export default function AuroraHub() {
     try { const [v, rj] = await Promise.all([getCrawlerResults('valid', 1, 200, 'desc'), getCrawlerResults('rejected', 1, 200, 'desc')]); setHistoryItems([...v.items, ...rj.items]); } catch { setHistoryItems([]); }
     setLoadingHistory(false);
   }, []);
-  const loadNotifs = useCallback((userId: string) => {
-    getNotifications(userId, 20).then(setNotifs).catch(() => setNotifs([]));
-  }, []);
   useEffect(() => {
-    getMe().then((u) => { setUser(u); loadNotifs(u.id); }).catch(() => {});
+    getMe().then((u) => { setUser(u); }).catch(() => {});
     loadSources(); loadResults(); loadHistory();
-  }, [loadSources, loadResults, loadHistory, loadNotifs]);
+  }, [loadSources, loadResults, loadHistory]);
 
   async function handleQuickCrawl(e: React.FormEvent) {
     e.preventDefault();
@@ -280,20 +276,6 @@ export default function AuroraHub() {
               </button>
             ))}
           </div>
-
-          {notifs.filter((n) => !dismissedNotifs.has(n.slug)).length > 0 && (
-            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {notifs.filter((n) => !dismissedNotifs.has(n.slug)).slice(0, 5).map((n) => {
-                const warn = n.type === 'system' || n.type === 'macro_error';
-                return (
-                  <div key={n.slug} className={warn ? 'rost-error' : 'rost-profil-ok'} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                    <span><strong>{n.title}</strong> — {n.body} <span style={{ color: 'var(--dim)' }}>· {timeSince(n.created_at)}</span></span>
-                    <button type="button" aria-label="Masquer la notification" onClick={() => setDismissedNotifs((s) => new Set(s).add(n.slug))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontSize: 18, lineHeight: 1, padding: '0 4px' }}>×</button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
 
           {creationTab === 'lien' && canAnyUniqLink && (
             <div style={{ marginTop: 14 }}>
