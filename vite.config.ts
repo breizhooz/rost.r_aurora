@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 // HTTPS en dev : on sert le front en TLS dès que les certs mkcert existent
 // (cf. ../backend/traefik/gen-certs.sh). Sans certs, on retombe sur http:// sans
 // casser le démarrage.
-const certDir = fileURLToPath(new URL('../backend/traefik/certs', import.meta.url))
+const certDir = fileURLToPath(new URL('../backend/infra/traefik/certs', import.meta.url))
 const certFile = `${certDir}/_wildcard.localhost.pem`
 const keyFile = `${certDir}/_wildcard.localhost-key.pem`
 const httpsDev =

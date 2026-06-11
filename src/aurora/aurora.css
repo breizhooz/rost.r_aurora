@@ -104,8 +104,14 @@
   margin-bottom: 18px;
 }
 .rost-brand-logo { height: 48px; width: auto; display: block; flex-shrink: 0; }
+/* Icône de déploiement (bouton d'ouverture) + chevron de fermeture : utiles
+   uniquement au rail desktop (cf. media min-width:801px). Masqués par défaut
+   sur mobile, où la sidebar est un drawer plein affichant le logo complet. */
+.rost-rail-emblem { display: none; }
+.rost-rail-toggle { display: none; }
 
 .rost-nav { display: flex; flex-direction: column; gap: 2px; }
+.rost-nav-label { white-space: nowrap; overflow: hidden; }
 .rost-nav-item {
   all: unset;
   cursor: pointer;
@@ -128,42 +134,26 @@
 .rost-nav-dot { margin-left: auto; width: 6px; height: 6px; border-radius: 50%; background: transparent; }
 
 .rost-side-foot { margin-top: auto; padding-top: 18px; display: flex; flex-direction: column; gap: 12px; }
-.rost-switch-classic {
-  all: unset;
-  cursor: pointer;
-  text-align: center;
-  padding: 9px 0;
-  border-radius: var(--r-pill);
-  border: 1px solid rgba(255,255,255,0.12);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: #b0b0b0;
-  transition: background 120ms ease, color 120ms ease;
+
+/* ── Profil utilisateur en pied de sidebar (avatar + nom + menu) ── */
+.rost-foot-user { position: relative; }
+.rost-foot-userbtn {
+  all: unset; cursor: pointer; box-sizing: border-box;
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 8px; border-radius: var(--r-pill);
+  transition: background 120ms ease;
 }
-.rost-switch-classic:hover { background: rgba(255,255,255,0.06); color: #fff; }
-.rost-theme {
-  background: rgba(255,255,255,0.06);
-  border-radius: var(--r-pill);
-  padding: 4px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+.rost-foot-userbtn:hover { background: rgba(255,255,255,0.06); }
+.rost-foot-user .rost-avatar { width: 40px; height: 40px; flex-shrink: 0; }
+.rost-foot-username {
+  font-size: 13px; font-weight: 600; color: #e8e8e8;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.rost-theme button {
-  all: unset;
-  cursor: pointer;
-  text-align: center;
-  padding: 8px 0;
-  border-radius: var(--r-pill);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: #888;
-  transition: background 120ms ease, color 120ms ease;
+/* Le menu déroulant s'ouvre vers le haut ; en position:fixed pour échapper à
+   l'overflow du rail (76px) qui le couperait sinon. */
+.rost-foot-user .rost-usermenu-dropdown {
+  position: fixed; left: 16px; bottom: 84px; top: auto; right: auto; z-index: 400;
 }
-.rost-theme button[aria-pressed="true"] { background: var(--rost-accent); color: #121212; font-weight: 700; }
 
 /* ─── Main ────────────────────────────────────────────────────────────── */
 .rost-main { overflow: auto; position: relative; }
@@ -195,6 +185,22 @@
   letter-spacing: 0.5px;
 }
 .rost-header-right { display: flex; align-items: center; gap: 12px; }
+
+/* Le ThemeSwitch est partagé avec l'interface classique (accent vert global).
+   On remappe ses variables d'accent sur la charte orange Aurora, sans toucher
+   l'autre interface. Scope limité au switch via ce wrapper. */
+.rost-themeswitch {
+  display: inline-flex;
+  --accent: var(--rost-accent);
+  --accent-light: #FF9248;
+  --accent-dim: var(--rost-accent-glow);
+  --accent-border: rgba(255, 107, 0, 0.30);
+  /* Surfaces/textes : la palette classique est bleu nuit ; on la remappe sur
+     les tokens Aurora (suivent le thème clair/sombre) pour rester sur charte. */
+  --bg-card: var(--paper-soft);
+  --bg-secondary: var(--paper);
+  --text-muted: var(--dim);
+}
 .rost-header-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
 /* Bandeau persistant « compte travaillé » (multicomptes) : visible sur toutes
    les pages tant qu'on agit sur un compte autre que le sien par défaut. */
@@ -1192,7 +1198,71 @@ button.rost-rating-star:hover { transform: scale(1.08); }
 ───────────────────────────────────────────────────────────────────────── */
 @media (max-width: 1100px) {
   .rost-grid, .rost-row-2 { grid-template-columns: 1fr; }
-  .rost-app { grid-template-columns: 210px 1fr; }
+}
+
+/* ── Desktop : sidebar en rail réduit (icônes seules), déployable au CLIC ────
+   Par défaut le rail n'affiche que les icônes + l'emblème (qui sert de bouton
+   d'ouverture). Le déploiement est piloté uniquement par le clic (.is-pinned) :
+   la colonne s'élargit et pousse le contenu ; le chevron referme. Pas de
+   déploiement au survol. Borné à min-width:801px (en dessous = drawer mobile).
+   .rost-side étant en position:fixed (hors flux grid), on force .rost-main en
+   colonne 2, sinon il se placerait dans la 1re colonne et masquerait la page. */
+@media (min-width: 801px) {
+  .rost-app {
+    grid-template-columns: 76px 1fr;
+    transition: grid-template-columns 200ms ease;
+  }
+  .rost-app.rail-pinned { grid-template-columns: 248px 1fr; }
+  .rost-main { grid-column: 2; }
+
+  .rost-side {
+    position: fixed; top: 0; left: 0; bottom: 0;
+    width: 76px; z-index: 60; overflow-x: hidden; overflow-y: auto;
+    transition: width 200ms ease;
+  }
+  .rost-side.is-pinned { width: 248px; }
+
+  /* État réduit : icône centrée, libellé et pastille escamotés. */
+  .rost-side .rost-nav-item { justify-content: center; gap: 0; }
+  .rost-side .rost-nav-label { opacity: 0; width: 0; transition: opacity 150ms ease; }
+  .rost-side .rost-nav-dot { width: 0; }
+
+  /* État déployé (épinglé via clic). */
+  .rost-side.is-pinned .rost-nav-item { justify-content: flex-start; gap: 12px; }
+  .rost-side.is-pinned .rost-nav-label { opacity: 1; width: auto; }
+  .rost-side.is-pinned .rost-nav-dot { width: 6px; }
+
+  /* Marque : emblème-bouton seul en réduit ; logo complet + chevron déployé. */
+  .rost-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+  .rost-rail-emblem {
+    all: unset; cursor: pointer; flex-shrink: 0;
+    width: 42px; height: 42px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    color: #d0d0d0; border: 1px solid rgba(255,255,255,0.10);
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  }
+  .rost-rail-emblem:hover { background: rgba(255,255,255,0.08); color: #fff; border-color: rgba(255,255,255,0.20); }
+  /* Spécificité .rost-side … (0,2,0) requise pour battre `.aurora-root img`
+     (0,1,1) qui force display:block sur toutes les images. */
+  .rost-side .rost-brand-logo { display: none; }
+  .rost-side.is-pinned .rost-brand { justify-content: space-between; padding-left: 10px; padding-right: 10px; }
+  .rost-side.is-pinned .rost-rail-emblem { display: none; }
+  .rost-side.is-pinned .rost-brand-logo { display: block; }
+
+  .rost-rail-toggle {
+    all: unset; cursor: pointer; flex-shrink: 0;
+    width: 28px; height: 28px; border-radius: 8px;
+    color: #b0b0b0; display: none; align-items: center; justify-content: center;
+    transition: background 120ms ease, color 120ms ease;
+  }
+  .rost-rail-toggle:hover { background: rgba(255,255,255,0.08); color: #fff; }
+  .rost-side.is-pinned .rost-rail-toggle { display: inline-flex; }
+
+  /* Pied : en replié, seul l'avatar (initiale) reste ; le nom apparaît déployé. */
+  .rost-side .rost-foot-userbtn { justify-content: center; }
+  .rost-side .rost-foot-username { display: none; }
+  .rost-side.is-pinned .rost-foot-userbtn { justify-content: flex-start; }
+  .rost-side.is-pinned .rost-foot-username { display: inline; }
 }
 @media (max-width: 900px) {
   .rost-rd-cols { grid-template-columns: 1fr; }

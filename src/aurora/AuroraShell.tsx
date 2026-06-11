@@ -1,15 +1,25 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useTheme } from '../context/ThemeContext';
 import { useAuthContext } from '../context/AuthContext';
 import { useAccount } from '../context/AccountContext';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { useNotifications } from '../hooks/useNotifications';
 import AuroraSearch from './AuroraSearch';
 import AccountSwitcher from '../components/AccountSwitcher';
+import ThemeSwitch from '../components/ThemeSwitch';
 import './aurora.css';
 
 export type AuroraScreen = 'dashboard' | 'journal' | 'semaine' | 'courses' | 'recettes' | 'hub' | 'profil' | 'comptes' | 'admin' | 'notifications';
+
+// Nom « presque en entier » dérivé de l'email (UserOut n'expose pas de nom) :
+// jean.dupont@ex.com → « Jean Dupont ».
+function displayName(email?: string): string {
+  if (!email) return '';
+  return email.split('@')[0]
+    .split(/[._-]/).filter(Boolean)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(' ');
+}
 
 function notifTimeSince(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -53,9 +63,8 @@ const ADMIN_NAV: NavItem = {
 
 export default function AuroraShell({ screen, initials, title, subtitle, children }: Props) {
   const navigate = useNavigate();
-  const { theme, toggleTheme } = useTheme();
-  const setTheme = (v: 'dark' | 'light') => { if (theme !== v) toggleTheme(); };
-  const { isAdmin, isCoach } = useCurrentUser();
+  const { isAdmin, isCoach, user } = useCurrentUser();
+  const userName = displayName(user?.email);
   const { logout: ctxLogout } = useAuthContext();
   const { active } = useAccount();
   // Bandeau persistant : visible uniquement quand on travaille sur le compte d'un
@@ -73,6 +82,16 @@ export default function AuroraShell({ screen, initials, title, subtitle, childre
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  // Rail latéral (desktop) : réduit aux icônes par défaut, déployable. L'état
+  // « épinglé » (reste ouvert) est mémorisé d'une session à l'autre.
+  const [railPinned, setRailPinned] = useState(() => {
+    try { return localStorage.getItem('aurora.rail.pinned') === '1'; } catch { return false; }
+  });
+  const toggleRail = () => setRailPinned((v) => {
+    const next = !v;
+    try { localStorage.setItem('aurora.rail.pinned', next ? '1' : '0'); } catch { /* stockage indispo */ }
+    return next;
+  });
 
   const openNotif = () => { setNotifOpen((v) => { const next = !v; if (next) markSeen(); return next; }); };
 
@@ -93,11 +112,26 @@ export default function AuroraShell({ screen, initials, title, subtitle, childre
 
   return (
     <div className="aurora-root">
-      <div className={`rost-app${menuOpen ? ' menu-open' : ''}`}>
+      <div className={`rost-app${menuOpen ? ' menu-open' : ''}${railPinned ? ' rail-pinned' : ''}`}>
         {menuOpen && <div className="rost-side-backdrop" onClick={() => setMenuOpen(false)} />}
-        <aside className={`rost-side${menuOpen ? ' is-open' : ''}`}>
+        <aside className={`rost-side${menuOpen ? ' is-open' : ''}${railPinned ? ' is-pinned' : ''}`}>
           <div className="rost-brand">
+            <button className="rost-rail-emblem" aria-label="Déployer le menu" onClick={toggleRail}>
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <path d="M9 4v16" />
+              </svg>
+            </button>
             <img className="rost-brand-logo" src="/aurora/titre-sombre-logo.png" alt="Rost.r" />
+            <button
+              className="rost-rail-toggle"
+              aria-label="Réduire le menu"
+              onClick={toggleRail}
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 6l-6 6 6 6" />
+              </svg>
+            </button>
           </div>
 
           <nav className="rost-nav">
@@ -106,22 +140,49 @@ export default function AuroraShell({ screen, initials, title, subtitle, childre
                 key={item.screen}
                 className="rost-nav-item"
                 aria-selected={screen === item.screen}
+                title={item.label}
                 onClick={() => go(item.path)}
               >
                 <svg className="rost-nav-ico" viewBox="0 0 24 24">{item.icon}</svg>
-                {item.label}
+                <span className="rost-nav-label">{item.label}</span>
                 <span className="rost-nav-dot" />
               </button>
             ))}
           </nav>
 
           <div className="rost-side-foot">
-            <button className="rost-switch-classic" onClick={() => navigate('/old/dashboard')}>
-              ← Interface classique
-            </button>
-            <div className="rost-theme" role="group" aria-label="Thème">
-              <button aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')}>Sombre</button>
-              <button aria-pressed={theme === 'light'} onClick={() => setTheme('light')}>Clair</button>
+            <div className="rost-usermenu rost-foot-user">
+              <button
+                className="rost-foot-userbtn"
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+                aria-label="Menu utilisateur"
+                title={userName || undefined}
+                onClick={() => setUserMenuOpen((v) => !v)}
+              >
+                <span className="rost-avatar">{initials ?? '…'}</span>
+                <span className="rost-foot-username">{userName}</span>
+              </button>
+              {userMenuOpen && (
+                <>
+                  <div className="rost-usermenu-backdrop" onClick={() => setUserMenuOpen(false)} />
+                  <div className="rost-usermenu-dropdown" role="menu">
+                    <button role="menuitem" onClick={() => { setUserMenuOpen(false); navigate('/profil'); }}>
+                      <span aria-hidden="true">👤</span> Profil
+                    </button>
+                    <button role="menuitem" onClick={() => { setUserMenuOpen(false); navigate('/notifications'); }}>
+                      <span aria-hidden="true">🔔</span> Notifications
+                      {unread > 0 && <span className="rost-usermenu-badge">{unread > 9 ? '9+' : unread}</span>}
+                    </button>
+                    <button role="menuitem" onClick={() => { setUserMenuOpen(false); navigate('/profil?section=securite'); }}>
+                      <span aria-hidden="true">🔒</span> Sécurité
+                    </button>
+                    <button role="menuitem" className="rost-usermenu-danger" onClick={logout}>
+                      <span aria-hidden="true">⎋</span> Déconnexion
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </aside>
@@ -149,6 +210,7 @@ export default function AuroraShell({ screen, initials, title, subtitle, childre
             <div className="rost-header-right">
               <AuroraSearch />
               <AccountSwitcher />
+              <span className="rost-themeswitch"><ThemeSwitch /></span>
               <div className="rost-notifmenu">
                 <button
                   className="rost-bell"
@@ -190,37 +252,6 @@ export default function AuroraShell({ screen, initials, title, subtitle, childre
                         onClick={() => { setNotifOpen(false); navigate('/notifications'); }}
                       >
                         Voir toutes les notifications →
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="rost-usermenu">
-                <button
-                  className="rost-avatar"
-                  aria-haspopup="menu"
-                  aria-expanded={userMenuOpen}
-                  aria-label="Menu utilisateur"
-                  onClick={() => setUserMenuOpen((v) => !v)}
-                >
-                  {initials ?? '…'}
-                </button>
-                {userMenuOpen && (
-                  <>
-                    <div className="rost-usermenu-backdrop" onClick={() => setUserMenuOpen(false)} />
-                    <div className="rost-usermenu-dropdown" role="menu">
-                      <button role="menuitem" onClick={() => { setUserMenuOpen(false); navigate('/profil'); }}>
-                        <span aria-hidden="true">👤</span> Profil
-                      </button>
-                      <button role="menuitem" onClick={() => { setUserMenuOpen(false); navigate('/notifications'); }}>
-                        <span aria-hidden="true">🔔</span> Notifications
-                        {unread > 0 && <span className="rost-usermenu-badge">{unread > 9 ? '9+' : unread}</span>}
-                      </button>
-                      <button role="menuitem" onClick={() => { setUserMenuOpen(false); navigate('/profil?section=securite'); }}>
-                        <span aria-hidden="true">🔒</span> Sécurité
-                      </button>
-                      <button role="menuitem" className="rost-usermenu-danger" onClick={logout}>
-                        <span aria-hidden="true">⎋</span> Déconnexion
                       </button>
                     </div>
                   </>
