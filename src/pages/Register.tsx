@@ -9,6 +9,9 @@ import {
   upsertNutrition,
 } from '../api/endpoints';
 import ThemeSwitch from '../components/ThemeSwitch';
+import { enrollAccount } from '@nutri/e2e-core';
+import { enrollKeyMaterial } from '../api/e2eKeys';
+import { setUserKey } from '../crypto/vault';
 import { useAuthContext } from '../context/AuthContext';
 import { consumePostLoginRedirect } from '../utils/postLoginRedirect';
 import { apiErrorMessage } from '../utils/apiError';
@@ -70,6 +73,10 @@ export default function Register() {
   // RGPD : acceptation de la politique de confidentialité (mention art. 9 — données
   // de santé) obligatoire avant de créer le compte.
   const [acceptedPolicy, setAcceptedPolicy] = useState(false);
+  // E2E : code de récupération à afficher UNE fois après l'inscription des clés,
+  // + destination de redirection une fois le code acquitté.
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
+  const [pendingRedirect, setPendingRedirect] = useState<string>('/dashboard');
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState<string | null>(null);
   const navigate = useNavigate();
@@ -111,6 +118,12 @@ export default function Register() {
       const loginResult = await apiLogin(fd.email, fd.password);
       if (!('access_token' in loginResult)) throw new Error('Réponse inattendue du serveur');
       setSession(loginResult.access_token);
+
+      // E2E : génère la User Key + code de récupération, enveloppe et inscrit le
+      // matériel de clés ; garde la UK en mémoire (coffre).
+      const enrollment = await enrollAccount(fd.password);
+      await enrollKeyMaterial(enrollment.payload);
+      setUserKey(enrollment.userKey);
 
       await createProfile({
         date_of_birth:    currentSkipped.has(1) ? null : (fd.date_of_birth || null),
@@ -158,9 +171,11 @@ export default function Register() {
         });
       }
 
-      // Inscription terminée : on reprend un éventuel parcours en attente
-      // (ex. lien d'invitation → /accept-invite déclenchera l'acceptation).
-      navigate(consumePostLoginRedirect() ?? '/dashboard', { replace: true });
+      // Inscription terminée : on affiche d'abord le code de récupération (une
+      // fois), puis on reprend un éventuel parcours en attente. `submitting.current`
+      // reste à true → le bounce auto ne court-circuite pas cet écran.
+      setPendingRedirect(consumePostLoginRedirect() ?? '/dashboard');
+      setRecoveryCode(enrollment.recoveryCode);
     } catch (err: unknown) {
       submitting.current = false;
       setError(apiErrorMessage(err, 'Erreur lors de la création du compte'));
@@ -190,6 +205,40 @@ export default function Register() {
   };
 
   const cardWidth = step === 0 ? 380 : 500;
+
+  // Écran « code de récupération » : affiché une seule fois après l'inscription.
+  // Sans ce code, une réinitialisation de mot de passe = perte définitive des
+  // données chiffrées (zero-knowledge).
+  if (recoveryCode) {
+    return (
+      <div className="aurora-root rost-auth">
+        <div className="rost-auth-theme"><ThemeSwitch floating /></div>
+        <div className="rost-auth-card" style={{ maxWidth: 460 }}>
+          <h2 className="rost-auth-title">Votre code de récupération</h2>
+          <p className="rost-auth-sub">Notez-le et conservez-le en lieu sûr</p>
+          <div className="rost-notice" role="alert" style={{ marginTop: 12 }}>
+            ⚠️ Vos données de santé sont chiffrées de bout en bout. <strong>Ce code est
+            le seul moyen de les récupérer si vous oubliez votre mot de passe.</strong>{' '}
+            Il ne vous sera plus jamais affiché et nous ne pouvons pas le régénérer.
+          </div>
+          <pre
+            style={{
+              fontSize: 18, letterSpacing: '0.15em', textAlign: 'center',
+              padding: '16px 8px', margin: '16px 0', borderRadius: 8,
+              border: '1px solid var(--rule)', userSelect: 'all', wordBreak: 'break-all',
+            }}
+          >{recoveryCode}</pre>
+          <button
+            type="button"
+            className="rost-add-btn rost-auth-submit"
+            onClick={() => navigate(pendingRedirect, { replace: true })}
+          >
+            J’ai noté mon code de récupération
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="aurora-root rost-auth">

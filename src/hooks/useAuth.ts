@@ -1,8 +1,24 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { unlockWithPassword } from '@nutri/e2e-core';
 import { login as apiLogin, verifyMfa as apiVerifyMfa } from '../api/endpoints';
+import { getKeyMaterial } from '../api/e2eKeys';
+import { setUserKey } from '../crypto/vault';
 import { useAuthContext } from '../context/AuthContext';
 import { apiErrorMessage } from '../utils/apiError';
+
+// E2E : après une session établie, déverrouille le coffre (UK en mémoire) à partir
+// du mot de passe. Best-effort — un échec n'empêche pas la connexion (les écrans
+// chiffrés géreront l'absence de coffre). Sans inscription de clés (compte legacy),
+// `getKeyMaterial` renvoie null → on ignore.
+async function unlockVault(password: string): Promise<void> {
+  try {
+    const material = await getKeyMaterial();
+    if (material) setUserKey(await unlockWithPassword(password, material));
+  } catch {
+    /* déverrouillage best-effort */
+  }
+}
 
 export function useAuth() {
   const navigate = useNavigate();
@@ -12,6 +28,8 @@ export function useAuth() {
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaToken, setMfaToken]     = useState<string | null>(null);
   const [mfaMethod, setMfaMethod]   = useState<string>('totp');
+  // Mot de passe mémorisé le temps du 2FA pour déverrouiller le coffre après MFA.
+  const pendingPassword = useRef<string | null>(null);
 
   const isAuthenticated = status === 'authenticated';
 
@@ -20,6 +38,7 @@ export function useAuth() {
     try {
       const result = await apiLogin(email, password);
       if ('mfa_token' in result) {
+        pendingPassword.current = password; // déverrouillage différé après le 2FA
         setMfaToken(result.mfa_token);
         setMfaMethod(result.mfa_method);
         setMfaRequired(true);
@@ -27,6 +46,7 @@ export function useAuth() {
         // SEC-05 : le refresh est posé en cookie HttpOnly par le backend ;
         // on ne garde que l'access token en mémoire.
         setSession(result.access_token);
+        await unlockVault(password);
         navigate('/dashboard');
       }
     } catch (err: unknown) {
@@ -44,6 +64,10 @@ export function useAuth() {
       setSession(tokens.access_token);
       setMfaRequired(false);
       setMfaToken(null);
+      if (pendingPassword.current) {
+        await unlockVault(pendingPassword.current);
+        pendingPassword.current = null;
+      }
       navigate('/dashboard');
     } catch (err: unknown) {
       setError(apiErrorMessage(err, 'Code invalide'));

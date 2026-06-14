@@ -6,6 +6,9 @@ import { useAccount } from '../context/AccountContext';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { decodeAccessContext } from '../utils/accessContext';
 import { apiErrorMessage } from '../utils/apiError';
+import { rewrapForNewPassword } from '@nutri/e2e-core';
+import { rotateKeyMaterial } from '../api/e2eKeys';
+import { getUserKey } from '../crypto/vault';
 
 const RULE_INTENSITIES: [string, number][] = [['Doux', 0.5], ['Modéré', 1.0], ['Intense', 1.5]];
 const INTENSITY_HELP: Record<number, string> = {
@@ -1100,7 +1103,14 @@ export default function AuroraProfil() {
                   if (pwdNew !== pwdConfirm) { setPwdErr('Les mots de passe ne correspondent pas.'); return; }
                   if (pwdNew.length < 8) { setPwdErr('Au moins 8 caractères.'); return; }
                   setPwdSaving(true); setPwdErr(''); setPwdOk(false);
-                  try { await changePassword(pwdCurrent, pwdNew); setPwdOk(true); setPwdCurrent(''); setPwdNew(''); setPwdConfirm(''); }
+                  try {
+                    await changePassword(pwdCurrent, pwdNew);
+                    // E2E : ré-enveloppe la User Key pour le nouveau mot de passe (la UK
+                    // ne change pas → aucun blob re-chiffré). Nécessite le coffre déverrouillé.
+                    const uk = getUserKey();
+                    if (uk) await rotateKeyMaterial(await rewrapForNewPassword(uk, pwdNew));
+                    setPwdOk(true); setPwdCurrent(''); setPwdNew(''); setPwdConfirm('');
+                  }
                   catch (e: unknown) { setPwdErr(apiErrorMessage(e, 'Erreur lors du changement.')); }
                   setPwdSaving(false);
                 }}>{pwdSaving ? 'Enregistrement…' : 'Changer le mot de passe'}</button>
