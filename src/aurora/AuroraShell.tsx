@@ -177,6 +177,9 @@ export default function AuroraShell({ screen, initials, title, subtitle, childre
                     <button role="menuitem" onClick={() => { setUserMenuOpen(false); navigate('/profil?section=securite'); }}>
                       <span aria-hidden="true">🔒</span> Sécurité
                     </button>
+                    <button role="menuitem" onClick={() => { setUserMenuOpen(false); navigate('/profil?section=confidentialite'); }}>
+                      <span aria-hidden="true">🛡️</span> Confidentialité
+                    </button>
                     <button role="menuitem" className="rost-usermenu-danger" onClick={logout}>
                       <span aria-hidden="true">⎋</span> Déconnexion
                     </button>

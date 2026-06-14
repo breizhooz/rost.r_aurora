@@ -4,6 +4,7 @@ import AuroraShell from './AuroraShell';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { useAccount } from '../context/AccountContext';
 import { decodeAccessContext } from '../utils/accessContext';
+import { apiErrorMessage } from '../utils/apiError';
 import {
   listInvitations,
   inviteMember,
@@ -49,11 +50,7 @@ function fmtDateTime(d: string): string {
   try { return new Date(d).toLocaleString('fr-FR'); } catch { return d; }
 }
 function errMessage(err: unknown): string {
-  if (err && typeof err === 'object' && 'response' in err) {
-    const detail = (err as { response?: { data?: { detail?: unknown } } }).response?.data?.detail;
-    if (typeof detail === 'string') return detail;
-  }
-  return err instanceof Error ? err.message : 'Une erreur est survenue';
+  return apiErrorMessage(err, err instanceof Error ? err.message : 'Une erreur est survenue');
 }
 
 export default function AuroraComptes() {

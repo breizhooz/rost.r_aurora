@@ -4,6 +4,7 @@ import { useAuthContext } from '../context/AuthContext';
 import { acceptInvitation, previewInvitation, switchAccount } from '../api/endpoints';
 import { setAccessToken } from '../api/tokenStore';
 import { setPostLoginRedirect } from '../utils/postLoginRedirect';
+import { apiErrorMessage } from '../utils/apiError';
 import type { AccountSummary, InvitationPreview } from '../types';
 import '../aurora/aurora.css';
 
@@ -13,11 +14,7 @@ const ROLE_LABEL: Record<string, string> = {
 };
 
 function errMessage(err: unknown): string {
-  if (err && typeof err === 'object' && 'response' in err) {
-    const detail = (err as { response?: { data?: { detail?: unknown } } }).response?.data?.detail;
-    if (typeof detail === 'string') return detail;
-  }
-  return err instanceof Error ? err.message : 'Une erreur est survenue';
+  return apiErrorMessage(err, err instanceof Error ? err.message : 'Une erreur est survenue');
 }
 
 export default function AcceptInvite() {

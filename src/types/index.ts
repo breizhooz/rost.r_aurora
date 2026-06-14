@@ -118,6 +118,14 @@ export interface AdminUser {
   user_right: UserRights;
 }
 
+/** Trace de consentement RGPD (art. 9) — état courant d'un type de consentement. */
+export interface ConsentResponse {
+  consent_type: string;
+  version: string;
+  granted: boolean;
+  created_at: string;
+}
+
 export interface UserRightsUpdate {
   user_admin?: boolean;
   is_coach?: boolean;

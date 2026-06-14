@@ -2,8 +2,26 @@ import axios, { type AxiosInstance } from 'axios';
 import { getAccessToken, setAccessToken, clearAccessToken } from './tokenStore';
 import { readStoredAccountId } from '../utils/activeAccount';
 import { decodeAccessContext } from '../utils/accessContext';
+import { errorMessageFromData } from '../utils/apiError';
 
 const USERS_BASE = 'https://api-users.localhost';
+
+// RGPD (art. 9) : service-profile renvoie 403 sur les écrans santé tant que le
+// consentement n'est pas actif. Le message est *traduit* (pas une clé stable) → on
+// reconnaît le cas par ces phrases connues (fr/en). Doublon de sûreté : l'UI gate
+// déjà proactivement les formulaires santé via le claim `health_consent`.
+const HEALTH_CONSENT_MESSAGES = [
+  'Consentement au traitement des données de santé requis',
+  'Consent to health data processing is required',
+];
+/** Route de la section Confidentialité, ouverte sur l'écran de consentement. */
+const CONSENT_ROUTE = '/profil?section=confidentialite&consent=required';
+
+function isHealthConsentDenied(error: { response?: { status?: number; data?: unknown } }): boolean {
+  if (error.response?.status !== 403) return false;
+  const msg = errorMessageFromData(error.response?.data);
+  return msg !== null && HEALTH_CONSENT_MESSAGES.includes(msg);
+}
 
 // SEC-05 : un seul refresh en vol à la fois. Au boot (ou sur une rafale de 401),
 // plusieurs requêtes peuvent vouloir rafraîchir en même temps → on partage la
@@ -100,6 +118,13 @@ function createClient(baseURL: string): AxiosInstance {
     (response) => response,
     async (error) => {
       const original = error.config;
+      // RGPD : consentement santé manquant → renvoyer l'utilisateur vers l'écran
+      // dédié (sauf s'il y est déjà, pour éviter une boucle de redirection).
+      if (isHealthConsentDenied(error)) {
+        const alreadyThere = window.location.search.includes('section=confidentialite');
+        if (!alreadyThere) window.location.assign(CONSENT_ROUTE);
+        return Promise.reject(error);
+      }
       if (error.response?.status === 401 && !original._retry) {
         original._retry = true;
         try {

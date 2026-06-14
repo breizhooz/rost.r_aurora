@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import { Skeleton } from '../components/Skeleton';
 import { useAuthContext } from '../context/AuthContext';
+import { apiErrorMessage } from '../utils/apiError';
 import {
   getMe,
   getMyProfile,
@@ -87,7 +88,7 @@ function InjuryForm({ onAdd, onCancel, addFn }: {
             notes:       fd.get('notes') || null,
           });
           onAdd(res.slug);
-        } catch (e2: unknown) { setErr(e2 instanceof Error ? e2.message : 'Erreur'); }
+        } catch (e2: unknown) { setErr(apiErrorMessage(e2, e2 instanceof Error ? e2.message : 'Erreur')); }
         setLoading(false);
       }}>
         <div className={styles.inlineRow}>
@@ -131,7 +132,7 @@ function AllergyForm({ onAdd, onCancel, addFn }: {
         try {
           await addFn({ allergen: fd.get('allergen'), severity: fd.get('severity'), notes: fd.get('notes') || null });
           onAdd();
-        } catch (e2: unknown) { setErr(e2 instanceof Error ? e2.message : 'Erreur'); }
+        } catch (e2: unknown) { setErr(apiErrorMessage(e2, e2 instanceof Error ? e2.message : 'Erreur')); }
         setLoading(false);
       }}>
         <div className={styles.inlineRow}>
@@ -173,7 +174,7 @@ function ConditionForm({ onAdd, onCancel, addFn }: {
             notes: fd.get('notes') || null,
           });
           onAdd();
-        } catch (e2: unknown) { setErr(e2 instanceof Error ? e2.message : 'Erreur'); }
+        } catch (e2: unknown) { setErr(apiErrorMessage(e2, e2 instanceof Error ? e2.message : 'Erreur')); }
         setLoading(false);
       }}>
         <div className={styles.inlineRow}>
@@ -223,7 +224,7 @@ function MedicationForm({ onAdd, onCancel, addFn }: {
             notes:               fd.get('notes') || null,
           });
           onAdd();
-        } catch (e2: unknown) { setErr(e2 instanceof Error ? e2.message : 'Erreur'); }
+        } catch (e2: unknown) { setErr(apiErrorMessage(e2, e2 instanceof Error ? e2.message : 'Erreur')); }
         setLoading(false);
       }}>
         <div className={styles.inlineRow}>
@@ -260,7 +261,7 @@ function ExcludedFoodForm({ onAdd, onCancel, addFn }: {
         try {
           await addFn({ food_name: fd.get('food_name'), reason: fd.get('reason') || null });
           onAdd();
-        } catch (e2: unknown) { setErr(e2 instanceof Error ? e2.message : 'Erreur'); }
+        } catch (e2: unknown) { setErr(apiErrorMessage(e2, e2 instanceof Error ? e2.message : 'Erreur')); }
         setLoading(false);
       }}>
         <div className={styles.inlineRow}>
@@ -296,7 +297,7 @@ function BodyCompositionForm({ onAdd, onCancel }: {
             water_percentage:    fd.get('water_percentage')    ? Number(fd.get('water_percentage'))    : null,
           });
           onAdd();
-        } catch (e2: unknown) { setErr(e2 instanceof Error ? e2.message : 'Erreur'); }
+        } catch (e2: unknown) { setErr(apiErrorMessage(e2, e2 instanceof Error ? e2.message : 'Erreur')); }
         setLoading(false);
       }}>
         <div className={styles.inlineRow}>
@@ -344,7 +345,7 @@ function BodyMeasurementsForm({ onAdd, onCancel }: {
             right_thigh_cm: n('right_thigh_cm'),
           });
           onAdd();
-        } catch (e2: unknown) { setErr(e2 instanceof Error ? e2.message : 'Erreur'); }
+        } catch (e2: unknown) { setErr(apiErrorMessage(e2, e2 instanceof Error ? e2.message : 'Erreur')); }
         setLoading(false);
       }}>
         <div className={styles.inlineRow}>
@@ -395,7 +396,7 @@ function PerformanceMetricForm({ onAdd, onCancel }: {
             one_rm_overhead_press_kg: nf('one_rm_overhead_press_kg'),
           });
           onAdd();
-        } catch (e2: unknown) { setErr(e2 instanceof Error ? e2.message : 'Erreur'); }
+        } catch (e2: unknown) { setErr(apiErrorMessage(e2, e2 instanceof Error ? e2.message : 'Erreur')); }
         setLoading(false);
       }}>
         <div className={styles.inlineRow}>
@@ -631,7 +632,7 @@ export default function ProfilePage() {
                     date_of_birth:    fd.get('date_of_birth')  || null,
                   });
                   setProfile(res);
-                } catch (err: unknown) { setProfileErr(err instanceof Error ? err.message : 'Erreur'); }
+                } catch (err: unknown) { setProfileErr(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')); }
                 setSavingProfile(false);
               }}>
                 <div className={styles.formGrid}>
@@ -681,7 +682,7 @@ export default function ProfilePage() {
                   });
                   setProfile(res);
                   setEditingProfile(false);
-                } catch (err: unknown) { setProfileErr(err instanceof Error ? err.message : 'Erreur'); }
+                } catch (err: unknown) { setProfileErr(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')); }
                 setSavingProfile(false);
               }}>
                 <div className={styles.formGrid}>
@@ -889,7 +890,7 @@ export default function ProfilePage() {
                     resting_heart_rate_bpm:   null,
                   });
                   setSports(res);
-                } catch (err: unknown) { setSportsErr(err instanceof Error ? err.message : 'Erreur'); }
+                } catch (err: unknown) { setSportsErr(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')); }
                 setSavingSports(false);
               }}>
                 <div className={styles.formGrid}>
@@ -973,7 +974,7 @@ export default function ProfilePage() {
                   });
                   setSports(res);
                   setEditingSports(false);
-                } catch (err: unknown) { setSportsErr(err instanceof Error ? err.message : 'Erreur'); }
+                } catch (err: unknown) { setSportsErr(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')); }
                 setSavingSports(false);
               }}>
                 <div className={styles.formGrid}>
@@ -1103,7 +1104,7 @@ export default function ProfilePage() {
                     sedentary_hours_per_day:   null,
                   });
                   setLifestyle(res);
-                } catch (err: unknown) { setLifestyleErr(err instanceof Error ? err.message : 'Erreur'); }
+                } catch (err: unknown) { setLifestyleErr(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')); }
                 setSavingLifestyle(false);
               }}>
                 <div className={styles.formGrid}>
@@ -1176,7 +1177,7 @@ export default function ProfilePage() {
                   });
                   setLifestyle(res);
                   setEditingLifestyle(false);
-                } catch (err: unknown) { setLifestyleErr(err instanceof Error ? err.message : 'Erreur'); }
+                } catch (err: unknown) { setLifestyleErr(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')); }
                 setSavingLifestyle(false);
               }}>
                 <div className={styles.formGrid}>
@@ -1313,7 +1314,7 @@ export default function ProfilePage() {
                     budget_per_day_eur:   fd.get('budget_per_day_eur') ? Number(fd.get('budget_per_day_eur')) : null,
                   });
                   setNutrition(res);
-                } catch (err: unknown) { setNutritionErr(err instanceof Error ? err.message : 'Erreur'); }
+                } catch (err: unknown) { setNutritionErr(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')); }
                 setSavingNutrition(false);
               }}>
                 <div className={styles.formGrid}>
@@ -1402,7 +1403,7 @@ export default function ProfilePage() {
                   });
                   setNutrition(res);
                   setEditingNutrition(false);
-                } catch (err: unknown) { setNutritionErr(err instanceof Error ? err.message : 'Erreur'); }
+                } catch (err: unknown) { setNutritionErr(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')); }
                 setSavingNutrition(false);
               }}>
                 <div className={styles.formGrid}>
@@ -1970,8 +1971,7 @@ export default function ProfilePage() {
                     setPwdOk(true);
                     setPwdCurrent(''); setPwdNew(''); setPwdConfirm('');
                   } catch (e: unknown) {
-                    const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-                    setPwdErr(typeof d === 'string' ? d : 'Erreur lors du changement de mot de passe.');
+                    setPwdErr(apiErrorMessage(e, 'Erreur lors du changement de mot de passe.'));
                   }
                   setPwdSaving(false);
                 }}
@@ -2016,8 +2016,7 @@ export default function ProfilePage() {
                         setMfaEnabled(false);
                         setTotpDone(false);
                       } catch (e: unknown) {
-                        const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-                        setTotpErr(typeof d === 'string' ? d : 'Erreur lors de la désactivation');
+                        setTotpErr(apiErrorMessage(e, 'Erreur lors de la désactivation'));
                       }
                       setTotpLoading(false);
                     }}
@@ -2034,8 +2033,7 @@ export default function ProfilePage() {
                         const data = await setupTotp();
                         setTotpSetup(data);
                       } catch (e: unknown) {
-                        const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-                        setTotpErr(typeof d === 'string' ? d : 'Erreur lors de la configuration TOTP');
+                        setTotpErr(apiErrorMessage(e, 'Erreur lors de la configuration TOTP'));
                       }
                       setTotpLoading(false);
                     }}
@@ -2087,8 +2085,7 @@ export default function ProfilePage() {
                             setTotpCode('');
                             setTotpDone(true);
                           } catch (e: unknown) {
-                            const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-                            setTotpErr(typeof d === 'string' ? d : 'Code invalide');
+                            setTotpErr(apiErrorMessage(e, 'Code invalide'));
                           }
                           setTotpLoading(false);
                         }}

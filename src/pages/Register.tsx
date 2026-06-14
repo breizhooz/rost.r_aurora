@@ -11,6 +11,7 @@ import {
 import ThemeSwitch from '../components/ThemeSwitch';
 import { useAuthContext } from '../context/AuthContext';
 import { consumePostLoginRedirect } from '../utils/postLoginRedirect';
+import { apiErrorMessage } from '../utils/apiError';
 import '../aurora/aurora.css';
 
 const STEPS = ['Compte', 'Physique', 'Sport', 'Mode de vie', 'Nutrition'];
@@ -66,6 +67,9 @@ export default function Register() {
   const [sportsList, setSportsList] = useState<string[]>([]);
   const [sportsInput, setSportsInput] = useState('');
   const [skipped, setSkipped]       = useState<Set<number>>(new Set());
+  // RGPD : acceptation de la politique de confidentialité (mention art. 9 — données
+  // de santé) obligatoire avant de créer le compte.
+  const [acceptedPolicy, setAcceptedPolicy] = useState(false);
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState<string | null>(null);
   const navigate = useNavigate();
@@ -91,7 +95,7 @@ export default function Register() {
 
   const checks = pwdChecks(fd.password);
   const isPwdStrong = checks.minLength && checks.hasUpper && checks.hasDigit && checks.hasSpecial;
-  const isStep0Valid = fd.email.trim() !== '' && fd.password !== '' && isPwdStrong;
+  const isStep0Valid = fd.email.trim() !== '' && fd.password !== '' && isPwdStrong && acceptedPolicy;
 
   const addSport = () => {
     const s = sportsInput.trim();
@@ -159,8 +163,7 @@ export default function Register() {
       navigate(consumePostLoginRedirect() ?? '/dashboard', { replace: true });
     } catch (err: unknown) {
       submitting.current = false;
-      const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : 'Erreur lors de la création du compte');
+      setError(apiErrorMessage(err, 'Erreur lors de la création du compte'));
     } finally {
       setLoading(false);
     }
@@ -237,6 +240,17 @@ export default function Register() {
                   placeholder="••••••••" autoComplete="new-password" required disabled={loading} />
                 <PasswordStrength password={fd.password} />
               </div>
+
+              <label className="rost-reg-consent" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, lineHeight: 1.5, marginTop: 4 }}>
+                <input type="checkbox" checked={acceptedPolicy} disabled={loading}
+                  onChange={(e) => setAcceptedPolicy(e.target.checked)} style={{ marginTop: 2 }} required />
+                <span>
+                  J’ai lu et j’accepte la{' '}
+                  <Link to="/confidentialite" target="_blank" rel="noopener noreferrer">politique de confidentialité</Link>,
+                  y compris le traitement de mes <strong>données de santé</strong> (art. 9 RGPD) sur la
+                  base de mon consentement explicite, que je peux retirer à tout moment.
+                </span>
+              </label>
             </>}
 
             {/* ── Step 1 : Données physiques ── */}
