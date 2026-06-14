@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import RecipeDetailModal from '../components/RecipeDetailModal';
+import { apiErrorMessage } from '../utils/apiError';
 import {
   getMenus,
   generateMenu,
@@ -142,9 +143,7 @@ export default function MenusPage() {
       });
       setActiveMenu(menu);
     } catch (err: unknown) {
-      const detail =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setGenError(detail ?? "Impossible de générer le menu. Vérifiez que des recettes sont disponibles.");
+      setGenError(apiErrorMessage(err, "Impossible de générer le menu. Vérifiez que des recettes sont disponibles."));
     }
     setGenerating(false);
   }

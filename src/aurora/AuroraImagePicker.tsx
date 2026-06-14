@@ -1,20 +1,8 @@
 import { useState } from 'react';
-import axios from 'axios';
 import { refreshImageSuggestions, selectRecipeImage } from '../api/endpoints';
 import type { ImageSuggestion, RecipeResponse } from '../types';
+import { apiErrorMessage } from '../utils/apiError';
 import './aurora.css';
-
-// Message d'erreur API : forme métier {error:{message}} (ex. quota Unsplash 503)
-// puis repli FastAPI {detail}.
-function apiErrorMessage(e: unknown, fallback: string): string {
-  if (axios.isAxiosError(e)) {
-    const data = e.response?.data as
-      | { error?: { message?: string }; detail?: string }
-      | undefined;
-    return data?.error?.message ?? data?.detail ?? fallback;
-  }
-  return fallback;
-}
 
 interface Props {
   recipe: RecipeResponse;

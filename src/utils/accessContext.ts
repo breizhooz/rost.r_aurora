@@ -17,6 +17,12 @@ export interface AccessContext {
   scopes: string[];
   /** Admin de plateforme (SAV) : court-circuite les scopes côté backend. */
   userAdmin: boolean;
+  /**
+   * Consentement santé (art. 9) actif au moment de l'émission du token.
+   * Le backend ne ré-évalue ce claim qu'au refresh : après un octroi/retrait via
+   * `/me/consents`, il faut rafraîchir le token pour qu'il reflète l'état réel.
+   */
+  healthConsent: boolean;
 }
 
 const EMPTY: AccessContext = {
@@ -25,6 +31,7 @@ const EMPTY: AccessContext = {
   role: null,
   scopes: [],
   userAdmin: false,
+  healthConsent: false,
 };
 
 function base64UrlDecode(part: string): string {
@@ -48,10 +55,16 @@ export function decodeAccessContext(token: string | null = getAccessToken()): Ac
         ? payload.scopes.filter((s): s is string => typeof s === 'string')
         : [],
       userAdmin: payload.user_admin === true,
+      healthConsent: payload.health_consent === true,
     };
   } catch {
     return EMPTY;
   }
+}
+
+/** Vrai si le token courant porte un consentement santé (art. 9) actif. */
+export function hasHealthConsent(ctx: AccessContext = decodeAccessContext()): boolean {
+  return ctx.healthConsent;
 }
 
 /** Vrai si l'identité peut gérer les membres du compte actif (scope member:manage). */

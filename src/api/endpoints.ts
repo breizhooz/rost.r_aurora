@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { usersClient, profileClient, recipeClient, menuClient, crawlerClient, notificationClient } from './client';
+import { usersClient, profileClient, recipeClient, menuClient, crawlerClient, notificationClient, refreshAccessToken } from './client';
 import type {
   TokenResponse,
   AccountSummary,
@@ -19,6 +19,7 @@ import type {
   PreAuthTokenResponse,
   TotpSetupResponse,
   UserOut,
+  ConsentResponse,
   AdminUser,
   UserRightsUpdate,
   RecipeCountsByUser,
@@ -121,6 +122,51 @@ export async function changePassword(currentPassword: string, newPassword: strin
 export async function getMe(): Promise<UserOut> {
   const { data } = await usersClient.get<UserOut>('/api/v1/users/me');
   return data;
+}
+
+// ── RGPD : consentement (art. 9), portabilité (art. 20), effacement (art. 17) ──
+/** Type de consentement « données de santé » (le seul exploité par l'UI à ce jour). */
+export const HEALTH_CONSENT_TYPE = 'health_data';
+/** Version du consentement santé = version de la politique de confidentialité associée. */
+export const HEALTH_CONSENT_VERSION = 'v1';
+
+/** État courant des consentements (dernière trace par type, append-only côté backend). */
+export async function getConsents(): Promise<ConsentResponse[]> {
+  const { data } = await usersClient.get<ConsentResponse[]>('/api/v1/users/me/consents');
+  return data;
+}
+
+/** Enregistre un octroi ou un retrait de consentement santé (append-only). */
+export async function recordHealthConsent(granted: boolean): Promise<ConsentResponse> {
+  const { data } = await usersClient.post<ConsentResponse>('/api/v1/users/me/consents', {
+    consent_type: HEALTH_CONSENT_TYPE,
+    version: HEALTH_CONSENT_VERSION,
+    granted,
+  });
+  return data;
+}
+
+/**
+ * Octroie ou retire le consentement santé puis **rafraîchit l'access token** afin
+ * que le claim `health_consent` (et donc le garde-fou de service-profile) reflète
+ * immédiatement le nouvel état. Sans ce refresh, le 403 fail-closed persisterait
+ * jusqu'au prochain refresh « naturel ».
+ */
+export async function setHealthConsent(granted: boolean): Promise<ConsentResponse> {
+  const consent = await recordHealthConsent(granted);
+  await refreshAccessToken();
+  return consent;
+}
+
+/** Export RGPD agrégé (identité + santé + menus + notifs + nutrition). */
+export async function exportMyData(): Promise<Record<string, unknown>> {
+  const { data } = await usersClient.get<Record<string, unknown>>('/api/v1/users/me/export');
+  return data;
+}
+
+/** Suppression définitive du compte (effacement cross-service côté backend, art. 17). */
+export async function deleteMyAccount(userId: string): Promise<void> {
+  await usersClient.delete(`/api/v1/users/${userId}`);
 }
 
 // ── Multicomptes (CRM) ──────────────────────────────────────────────────────

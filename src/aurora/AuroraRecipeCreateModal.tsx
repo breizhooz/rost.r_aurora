@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createRecipeManual, uploadRecipeImage } from '../api/endpoints';
+import { apiErrorMessage } from '../utils/apiError';
 import type { RecipeCommitRequest, HydratedIngredient, RecipeResponse } from '../types';
 import AuroraImagePicker from './AuroraImagePicker';
 
@@ -68,7 +69,7 @@ export default function AuroraRecipeCreateModal({ onClose, onCreated }: Props) {
       setCreated(final);
       setSubmitting(false);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erreur lors de la création');
+      setError(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur lors de la création'));
       setSubmitting(false);
     }
   }

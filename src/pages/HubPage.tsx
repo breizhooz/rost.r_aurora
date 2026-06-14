@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Layout from '../components/Layout';
 import { Skeleton } from '../components/Skeleton';
+import { apiErrorMessage } from '../utils/apiError';
 import {
   getCrawlerSources,
   createCrawlerSource,
@@ -238,7 +239,7 @@ export default function HubPage() {
       setManualImageFile(null);
       setManualImagePreview(null);
     } catch (err: unknown) {
-      setManualError(err instanceof Error ? err.message : 'Erreur lors de la création');
+      setManualError(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur lors de la création'));
     }
     setManualSubmitting(false);
   }
@@ -331,7 +332,7 @@ export default function HubPage() {
       setQuickMsg('Crawl lancé — résultat disponible dans la file d\'attente sous 30s.');
       setQuickUrl('');
     } catch (err: unknown) {
-      setQuickMsg(`Erreur : ${err instanceof Error ? err.message : 'Erreur'}`);
+      setQuickMsg(`Erreur : ${apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')}`);
     }
     setQuickLoading(false);
   }
@@ -381,7 +382,7 @@ export default function HubPage() {
       setSrcValue('');
       setShowForm(false);
     } catch (err: unknown) {
-      setSrcError(err instanceof Error ? err.message : 'Erreur');
+      setSrcError(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur'));
     }
     setSubmittingSrc(false);
   }
@@ -413,7 +414,7 @@ export default function HubPage() {
       setRecipe(hydratedToCommit(h));
       setModalStep('recipe');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '';
+      const msg = apiErrorMessage(err, err instanceof Error ? err.message : '');
       const isTimeout = msg.toLowerCase().includes('timeout') || msg.includes('ECONNABORTED') || msg.includes('Network Error');
       setHydrateError(
         isTimeout
@@ -437,7 +438,7 @@ export default function HubPage() {
       }
       closeModal();
     } catch (err: unknown) {
-      setCommitError(err instanceof Error ? err.message : 'Erreur lors de l\'insertion');
+      setCommitError(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur lors de l\'insertion'));
     }
     setCommitting(false);
   }

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import AuroraShell from './AuroraShell';
 import AuroraRecipeCreateModal from './AuroraRecipeCreateModal';
 import AuroraScanModal from './AuroraScanModal';
+import { apiErrorMessage } from '../utils/apiError';
 import {
   getMe, getCrawlerSources, createCrawlerSource, deleteCrawlerSource, triggerCrawl, getCrawlerResults,
   crawlOneshot, getCrawlOneshotStatus, rejectCrawlResult, resetCrawlResult, hydrateResult, commitResult, listMyRecipes,
@@ -158,7 +159,7 @@ export default function AuroraHub() {
       }
       if (!resolved) setQuickMsg(`Import ${label} lancé — vérifie « Validation » dans un moment.`);
     } catch (err: unknown) {
-      setQuickMsg(`Erreur : ${err instanceof Error ? err.message : 'Erreur'}`);
+      setQuickMsg(`Erreur : ${apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')}`);
     }
     setQuickLoading(false);
   }
@@ -181,7 +182,7 @@ export default function AuroraHub() {
   async function handleAddSource(e: React.FormEvent) {
     e.preventDefault(); if (!srcValue.trim()) return; setSrcError(''); setSubmittingSrc(true);
     try { const body = srcType === 'web' ? { type: 'web', url: srcValue.trim(), frequency_hours: srcFreq } : { type: 'instagram', account: srcValue.trim(), frequency_hours: srcFreq }; const src = await createCrawlerSource(body); setSources((p) => [src, ...p]); setSrcValue(''); setShowForm(false); }
-    catch (err: unknown) { setSrcError(err instanceof Error ? err.message : 'Erreur'); } setSubmittingSrc(false);
+    catch (err: unknown) { setSrcError(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')); } setSubmittingSrc(false);
   }
   async function handleReject(id: string) {
     setActioningId(id);
@@ -194,7 +195,7 @@ export default function AuroraHub() {
       if (currentStatus === 'rejected') { const reset = await resetCrawlResult(id); setHistoryItems((p) => p.filter((r) => r.id !== id)); setResults((p) => [reset, ...p.filter((r) => r.id !== id)]); if (modalResult) setModalResult(reset); setModalFromHistory(false); }
       const h = await hydrateResult(id); setHydrated(h); setRecipe(hydratedToCommit(h)); setModalStep('recipe');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '';
+      const msg = apiErrorMessage(err, err instanceof Error ? err.message : '');
       const isTimeout = msg.toLowerCase().includes('timeout') || msg.includes('ECONNABORTED') || msg.includes('Network Error');
       setHydrateError(isTimeout ? "L'analyse prend plus de temps que prévu. Veuillez réessayer dans un instant." : msg || "Erreur lors de l'analyse");
       setModalStep('raw');
@@ -203,7 +204,7 @@ export default function AuroraHub() {
   async function handleCommit() {
     if (!modalResult || !recipe) return; setCommitting(true); setCommitError('');
     try { await commitResult(modalResult.id, recipe); if (modalFromHistory) setHistoryItems((p) => p.filter((r) => r.id !== modalResult.id)); else setResults((p) => p.filter((r) => r.id !== modalResult.id)); closeModal(); }
-    catch (err: unknown) { setCommitError(err instanceof Error ? err.message : "Erreur lors de l'insertion"); } setCommitting(false);
+    catch (err: unknown) { setCommitError(apiErrorMessage(err, err instanceof Error ? err.message : "Erreur lors de l'insertion")); } setCommitting(false);
   }
   function setField<K extends keyof RecipeCommitRequest>(k: K, v: RecipeCommitRequest[K]) { setRecipe((p) => p ? { ...p, [k]: v } : p); }
   function updateIngredient(idx: number, f: keyof HydratedIngredient, v: string | number) { setRecipe((p) => p ? { ...p, ingredients: p.ingredients.map((ing, i) => i === idx ? { ...ing, [f]: v } : ing) } : p); }

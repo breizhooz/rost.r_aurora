@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AuroraShell from './AuroraShell';
 import AuroraRecipeModal from './AuroraRecipeModal';
+import { apiErrorMessage } from '../utils/apiError';
 import {
   getMe, getMenus, generateMenu, updateMenu, deleteMenu, listAllRecipes, getCalculations,
 } from '../api/endpoints';
@@ -88,8 +89,7 @@ export default function AuroraSemaine() {
       const menu = await generateMenu({ start_date: weekKey, nb_persons: persons, caloric_target: tdee ?? undefined });
       setActiveMenu(menu);
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setGenError(detail ?? "Impossible de générer le menu. Vérifiez que des recettes sont disponibles.");
+      setGenError(apiErrorMessage(err, "Impossible de générer le menu. Vérifiez que des recettes sont disponibles."));
     }
     setGenerating(false);
   }

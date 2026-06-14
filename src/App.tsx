@@ -4,6 +4,7 @@ import Register        from './pages/Register'
 import ForgotPassword  from './pages/ForgotPassword'
 import OAuthCallback   from './pages/OAuthCallback'
 import AcceptInvite    from './pages/AcceptInvite'
+import Confidentialite from './pages/Confidentialite'
 import Dashboard    from './pages/Dashboard'
 import ProfilePage  from './pages/ProfilePage'
 import HubPage      from './pages/HubPage'
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="/forgot-password"  element={<ForgotPassword />} />
         <Route path="/oauth/callback"   element={<OAuthCallback />} />
         <Route path="/accept-invite"    element={<AcceptInvite />} />
+        <Route path="/confidentialite"  element={<Confidentialite />} />
         {/* ── Aurora = interface principale (racine) ── */}
         <Route path="/dashboard" element={<P><AuroraDashboard /></P>} />
         <Route path="/journal"   element={<P><AuroraJournal /></P>} />

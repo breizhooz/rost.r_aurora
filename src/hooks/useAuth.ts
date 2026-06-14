@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { login as apiLogin, verifyMfa as apiVerifyMfa } from '../api/endpoints';
 import { useAuthContext } from '../context/AuthContext';
+import { apiErrorMessage } from '../utils/apiError';
 
 export function useAuth() {
   const navigate = useNavigate();
@@ -29,8 +30,7 @@ export function useAuth() {
         navigate('/dashboard');
       }
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : 'Identifiants incorrects');
+      setError(apiErrorMessage(err, 'Identifiants incorrects'));
     } finally {
       setLoading(false);
     }
@@ -46,8 +46,7 @@ export function useAuth() {
       setMfaToken(null);
       navigate('/dashboard');
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : 'Code invalide');
+      setError(apiErrorMessage(err, 'Code invalide'));
     } finally {
       setLoading(false);
     }
