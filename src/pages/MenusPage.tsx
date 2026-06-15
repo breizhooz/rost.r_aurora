@@ -3,22 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import RecipeDetailModal from '../components/RecipeDetailModal';
 import { apiErrorMessage } from '../utils/apiError';
+import { listAllRecipes, getCalculations } from '../api/endpoints';
 import {
-  getMenus,
-  generateMenu,
-  updateMenu,
-  deleteMenu,
-  listAllRecipes,
-  getCalculations,
-} from '../api/endpoints';
-import type {
-  WeeklyMenuResponse,
-  MenuSlotCreate,
-  MenuSlotResponse,
-  DayOfWeekKey,
-  MealTypeKey,
-  RecipeResponse,
-} from '../types';
+  getMenuBlob,
+  putMenuBlob,
+  deleteMenuBlob,
+  buildNutritionSummaryFromProfile,
+  VaultLockedError,
+  type MenuDocument,
+  type MenuSlotDoc,
+} from '../api/menuVault';
+import { isVaultUnlocked } from '../crypto/vault';
+import { generateWeeklyMenu } from '@nutri/e2e-core';
+import type { DayOfWeekKey, MealTypeKey, RecipeResponse } from '../types';
 import styles from './MenusPage.module.css';
 
 const DAYS: { key: DayOfWeekKey; label: string }[] = [
@@ -79,7 +76,9 @@ interface CellMenuState {
 export default function MenusPage() {
   const navigate = useNavigate();
   const [weekStart, setWeekStart] = useState<Date>(() => getMonday(new Date()));
-  const [activeMenu, setActiveMenu] = useState<WeeklyMenuResponse | null>(null);
+  const [activeMenu, setActiveMenu] = useState<MenuDocument | null>(null);
+  const [menuVersion, setMenuVersion] = useState<number | null>(null);
+  const [vaultLocked, setVaultLocked] = useState(false);
   const [loading, setLoading]     = useState(true);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError]   = useState('');
@@ -91,7 +90,7 @@ export default function MenusPage() {
   const [recipeSearch, setRecipeSearch] = useState('');
 
   const [recipeDetailSlug, setRecipeDetailSlug] = useState<string | null>(null);
-  const [detailSlot, setDetailSlot] = useState<MenuSlotResponse | null>(null);
+  const [detailSlot, setDetailSlot] = useState<MenuSlotDoc | null>(null);
   const [persons, setPersons] = useState(2);
   const [cellMenu, setCellMenu] = useState<CellMenuState | null>(null);
   const cellMenuRef = useRef<CellMenuState | null>(null);
@@ -101,17 +100,34 @@ export default function MenusPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    // Le menu est chiffré côté client : sans coffre déverrouillé (UK), on ne peut
+    // ni lire ni générer. On affiche un état dédié plutôt que de planter.
+    if (!isVaultUnlocked()) {
+      setVaultLocked(true);
+      setActiveMenu(null);
+      setMenuVersion(null);
+      setLoading(false);
+      return;
+    }
+    setVaultLocked(false);
     try {
-      const [all, calc] = await Promise.all([getMenus(), getCalculations()]);
+      const [stored, calc] = await Promise.all([getMenuBlob(weekKey), getCalculations()]);
       // Cible des menus = cible énergétique de l'objectif (déficit/surplus
       // appliqué) si disponible, sinon la maintenance (TDEE).
       const target = calc?.target_calories_kcal ?? calc?.tdee_kcal;
       if (target) setTdee(Math.round(target));
-      const found = all.find(m => m.start_date === weekKey) ?? null;
-      setActiveMenu(found);
-      if (found) setPersons(found.nb_persons);
-    } catch {
+      if (stored) {
+        setActiveMenu(stored.doc);
+        setMenuVersion(stored.version);
+        setPersons(stored.doc.nb_persons);
+      } else {
+        setActiveMenu(null);
+        setMenuVersion(null);
+      }
+    } catch (err) {
+      if (err instanceof VaultLockedError) setVaultLocked(true);
       setActiveMenu(null);
+      setMenuVersion(null);
     }
     setLoading(false);
   }, [weekKey]);
@@ -136,14 +152,28 @@ export default function MenusPage() {
     setGenerating(true);
     setGenError('');
     try {
-      const menu = await generateMenu({
-        start_date: weekKey,
-        nb_persons: persons,
-        caloric_target: tdee ?? undefined,
-      });
-      setActiveMenu(menu);
+      // Génération 100 % cliente : contraintes dérivées du profil + catalogue
+      // public, puis chiffrement et rangement dans le coffre (collection weekly_menu).
+      const summary = await buildNutritionSummaryFromProfile();
+      const slots = generateWeeklyMenu(recipes, {
+        nbPersons: persons,
+        summary,
+        caloricTarget: tdee ?? null,
+        durationDays: 7,
+      }) as MenuSlotDoc[];
+      const doc: MenuDocument = { start_date: weekKey, nb_persons: persons, slots };
+      const version = await putMenuBlob(weekKey, doc, menuVersion ?? undefined);
+      setActiveMenu(doc);
+      setMenuVersion(version);
     } catch (err: unknown) {
-      setGenError(apiErrorMessage(err, "Impossible de générer le menu. Vérifiez que des recettes sont disponibles."));
+      if (err instanceof VaultLockedError) {
+        setVaultLocked(true);
+        setGenError(err.message);
+      } else if (err instanceof Error && err.message.includes('Aucune recette')) {
+        setGenError('Impossible de générer le menu : aucune recette ne survit à vos exclusions, ou le catalogue est vide.');
+      } else {
+        setGenError(apiErrorMessage(err, "Impossible de générer le menu. Vérifiez que des recettes sont disponibles."));
+      }
     }
     setGenerating(false);
   }
@@ -151,8 +181,9 @@ export default function MenusPage() {
   async function handleDeleteMenu() {
     if (!activeMenu || !confirm('Supprimer ce menu ?')) return;
     try {
-      await deleteMenu(activeMenu.id);
+      await deleteMenuBlob(weekKey);
       setActiveMenu(null);
+      setMenuVersion(null);
     } catch { /* ignore */ }
   }
 
@@ -196,24 +227,21 @@ export default function MenusPage() {
     );
   }
 
-  function toCreate(s: MenuSlotResponse): MenuSlotCreate {
-    return {
-      day_of_week: s.day_of_week,
-      meal_type: s.meal_type,
-      recipe_id: s.recipe_id,
-      nb_persons: s.nb_persons,
-    };
+  // Persiste un menu modifié dans le coffre (verrouillage optimiste via la version).
+  async function saveMenu(doc: MenuDocument): Promise<void> {
+    const version = await putMenuBlob(weekKey, doc, menuVersion ?? undefined);
+    setActiveMenu(doc);
+    setMenuVersion(version);
   }
 
   async function handleSlotRemove(day: DayOfWeekKey, meal: MealTypeKey) {
     if (!activeMenu) return;
     setSaving(true);
     try {
-      const slots: MenuSlotCreate[] = activeMenu.slots
-        .filter(s => !(s.day_of_week === day && s.meal_type === meal))
-        .map(toCreate);
-      const updated = await updateMenu(activeMenu.id, { slots });
-      setActiveMenu(updated);
+      const slots = activeMenu.slots.filter(
+        s => !(s.day_of_week === day && s.meal_type === meal),
+      );
+      await saveMenu({ ...activeMenu, slots });
     } catch { /* ignore */ }
     setSaving(false);
   }
@@ -222,10 +250,10 @@ export default function MenusPage() {
     if (!slotEdit || !activeMenu) return;
     setSaving(true);
     try {
-      const slots: MenuSlotCreate[] = [
-        ...activeMenu.slots
-          .filter(s => !(s.day_of_week === slotEdit.day && s.meal_type === slotEdit.meal))
-          .map(toCreate),
+      const slots: MenuSlotDoc[] = [
+        ...activeMenu.slots.filter(
+          s => !(s.day_of_week === slotEdit.day && s.meal_type === slotEdit.meal),
+        ),
         {
           day_of_week: slotEdit.day,
           meal_type: slotEdit.meal,
@@ -233,8 +261,7 @@ export default function MenusPage() {
           nb_persons: activeMenu.nb_persons,
         },
       ];
-      const updated = await updateMenu(activeMenu.id, { slots });
-      setActiveMenu(updated);
+      await saveMenu({ ...activeMenu, slots });
       setSlotEdit(null);
     } catch { /* ignore */ }
     setSaving(false);
@@ -246,16 +273,15 @@ export default function MenusPage() {
     newPersons: number,
   ) {
     if (!activeMenu) return;
-    const slots: MenuSlotCreate[] = activeMenu.slots.map(s =>
+    const slots: MenuSlotDoc[] = activeMenu.slots.map(s =>
       s.day_of_week === day && s.meal_type === meal
-        ? { ...toCreate(s), nb_persons: newPersons }
-        : toCreate(s)
+        ? { ...s, nb_persons: newPersons }
+        : s
     );
-    const updated = await updateMenu(activeMenu.id, { slots });
-    setActiveMenu(updated);
-    // Les slots sont recréés (nouveaux ids) : on retrouve par (jour, repas), clé stable.
+    const doc = { ...activeMenu, slots };
+    await saveMenu(doc);
     setDetailSlot(
-      updated.slots.find(s => s.day_of_week === day && s.meal_type === meal) ?? null
+      doc.slots.find(s => s.day_of_week === day && s.meal_type === meal) ?? null
     );
   }
 
@@ -278,7 +304,7 @@ export default function MenusPage() {
             {activeMenu && (
               <button
                 className={styles.btnCart}
-                onClick={() => navigate(`/courses?menu=${activeMenu.id}`)}
+                onClick={() => navigate(`/courses?week=${weekKey}`)}
               >
                 🛒 Générer la liste de courses
               </button>
@@ -296,7 +322,7 @@ export default function MenusPage() {
                 onChange={e => setPersons(Math.max(1, Number(e.target.value) || 1))}
               />
             </label>
-            <button className={styles.btnPrimary} onClick={handleGenerate} disabled={generating}>
+            <button className={styles.btnPrimary} onClick={handleGenerate} disabled={generating || vaultLocked}>
               {generating
                 ? <><span className={styles.spinner} /> Génération…</>
                 : activeMenu ? '↺ Regénérer' : '+ Générer un menu'}
@@ -304,6 +330,12 @@ export default function MenusPage() {
           </div>
         </div>
 
+        {vaultLocked && (
+          <p className={styles.error}>
+            🔒 Coffre verrouillé : tes menus sont chiffrés de bout en bout. Reconnecte-toi
+            (ou déverrouille ta session) pour les afficher et en générer.
+          </p>
+        )}
         {genError && <p className={styles.error}>{genError}</p>}
 
         {/* Week navigation */}

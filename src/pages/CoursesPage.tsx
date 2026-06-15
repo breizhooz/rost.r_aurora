@@ -1,8 +1,11 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { getMenus, getShoppingList, exportShoppingList } from '../api/endpoints';
-import type { WeeklyMenuResponse, ShoppingList, ShoppingItem } from '../types';
+import { buildShoppingList, type ShoppingItem, type Recipe } from '@nutri/e2e-core';
+import { listAllRecipes } from '../api/endpoints';
+import { listMenuWeeks, getMenuBlob, VaultLockedError } from '../api/menuVault';
+import { isVaultUnlocked } from '../crypto/vault';
+import { exportShoppingCsv, exportShoppingPdf } from '../utils/shoppingExport';
 import styles from './CoursesPage.module.css';
 
 const CATEGORY_META: Record<string, { label: string; icon: string }> = {
@@ -29,14 +32,16 @@ function getCategoryMeta(cat: string | null) {
   };
 }
 
+const categoryLabel = (cat: string | null) => getCategoryMeta(cat).label;
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('fr-FR', {
     day: '2-digit', month: 'long', year: 'numeric',
   });
 }
 
-function menuLabel(menu: WeeklyMenuResponse): string {
-  return `Semaine du ${formatDate(menu.start_date)} — ${menu.nb_persons} pers.`;
+function weekLabel(week: string): string {
+  return `Semaine du ${formatDate(week)}`;
 }
 
 function groupByCategory(items: ShoppingItem[]): [string | null, ShoppingItem[]][] {
@@ -57,67 +62,80 @@ function groupByCategory(items: ShoppingItem[]): [string | null, ShoppingItem[]]
   });
 }
 
-function triggerDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+/** Liste de courses calculée client (le menu n'existe que déchiffré). */
+interface ShoppingView {
+  start_date: string;
+  nb_persons: number;
+  items: ShoppingItem[];
 }
 
 export default function CoursesPage() {
   const [searchParams] = useSearchParams();
-  const menuParam = searchParams.get('menu');
+  const weekParam = searchParams.get('week');
 
-  const [menus, setMenus]               = useState<WeeklyMenuResponse[]>([]);
-  const [selectedId, setSelectedId]     = useState<number | null>(null);
-  const [shoppingList, setShoppingList] = useState<ShoppingList | null>(null);
+  const [weeks, setWeeks]               = useState<string[]>([]);
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
+  const [shoppingList, setShoppingList] = useState<ShoppingView | null>(null);
   const [loadingList, setLoadingList]   = useState(false);
   const [loadingMenus, setLoadingMenus] = useState(true);
-  const [exporting, setExporting]       = useState<'csv' | 'pdf' | null>(null);
+  const [vaultLocked, setVaultLocked]   = useState(false);
   const [error, setError]               = useState<string | null>(null);
 
-  useEffect(() => {
-    getMenus()
-      .then((data) => {
-        const sorted = [...data].sort(
-          (a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
-        );
-        setMenus(sorted);
-        const fromParam = menuParam ? Number(menuParam) : null;
-        const initial = fromParam && sorted.find((m) => m.id === fromParam)
-          ? fromParam
-          : sorted[0]?.id ?? null;
-        setSelectedId(initial);
-      })
-      .finally(() => setLoadingMenus(false));
-  }, [menuParam]);
+  // Catalogue public (id → recette) pour résoudre les ingrédients localement.
+  const recipesById = useRef<Map<number, Recipe>>(new Map());
 
   useEffect(() => {
-    if (selectedId === null) { setShoppingList(null); return; }
+    if (!isVaultUnlocked()) {
+      setVaultLocked(true);
+      setLoadingMenus(false);
+      return;
+    }
+    Promise.all([
+      listMenuWeeks(),
+      listAllRecipes().then((items) => {
+        recipesById.current = new Map(items.map((r) => [r.id, r as unknown as Recipe]));
+      }),
+    ])
+      .then(([ws]) => {
+        setWeeks(ws);
+        const initial = weekParam && ws.includes(weekParam) ? weekParam : ws[0] ?? null;
+        setSelectedWeek(initial);
+      })
+      .catch(() => setError('Impossible de charger les menus.'))
+      .finally(() => setLoadingMenus(false));
+  }, [weekParam]);
+
+  useEffect(() => {
+    if (selectedWeek === null) { setShoppingList(null); return; }
     setLoadingList(true);
     setError(null);
-    getShoppingList(selectedId)
-      .then(setShoppingList)
-      .catch(() => setError('Impossible de charger la liste de courses.'))
+    getMenuBlob(selectedWeek)
+      .then((stored) => {
+        if (!stored) { setShoppingList(null); return; }
+        const items = buildShoppingList(stored.doc.slots, recipesById.current);
+        setShoppingList({
+          start_date: stored.doc.start_date,
+          nb_persons: stored.doc.nb_persons,
+          items,
+        });
+      })
+      .catch((err) => {
+        if (err instanceof VaultLockedError) setVaultLocked(true);
+        setError('Impossible de charger la liste de courses.');
+      })
       .finally(() => setLoadingList(false));
-  }, [selectedId]);
+  }, [selectedWeek]);
 
-  const handleExport = useCallback(async (format: 'csv' | 'pdf') => {
-    if (!selectedId) return;
-    setExporting(format);
-    try {
-      const blob = await exportShoppingList(selectedId, format);
-      const menu = menus.find((m) => m.id === selectedId);
-      const date = menu?.start_date ?? String(selectedId);
-      triggerDownload(blob, `courses-${date}.${format}`);
-    } catch {
-      setError("L'export a échoué.");
-    } finally {
-      setExporting(null);
-    }
-  }, [selectedId, menus]);
+  const handleExport = useCallback((format: 'csv' | 'pdf') => {
+    if (!shoppingList) return;
+    const data = {
+      startDate: shoppingList.start_date,
+      nbPersons: shoppingList.nb_persons,
+      items: shoppingList.items,
+    };
+    if (format === 'csv') exportShoppingCsv(data, categoryLabel);
+    else exportShoppingPdf(data, categoryLabel);
+  }, [shoppingList]);
 
   const groups     = shoppingList ? groupByCategory(shoppingList.items) : [];
   const totalItems = shoppingList?.items.length ?? 0;
@@ -130,31 +148,31 @@ export default function CoursesPage() {
           <div className={styles.controls}>
             {loadingMenus ? (
               <div className={styles.skeleton} style={{ width: 220, height: 36 }} />
-            ) : menus.length > 0 ? (
+            ) : weeks.length > 0 ? (
               <select
                 className={styles.select}
-                value={selectedId ?? ''}
-                onChange={(e) => setSelectedId(Number(e.target.value))}
+                value={selectedWeek ?? ''}
+                onChange={(e) => setSelectedWeek(e.target.value)}
               >
-                {menus.map((m) => (
-                  <option key={m.id} value={m.id}>{menuLabel(m)}</option>
+                {weeks.map((w) => (
+                  <option key={w} value={w}>{weekLabel(w)}</option>
                 ))}
               </select>
             ) : null}
             <div className={styles.btnGroup}>
               <button
                 className={styles.btnExport}
-                disabled={!shoppingList || exporting !== null}
+                disabled={!shoppingList || totalItems === 0}
                 onClick={() => handleExport('csv')}
               >
-                {exporting === 'csv' ? '…' : '↓'} CSV
+                ↓ CSV
               </button>
               <button
                 className={styles.btnExport}
-                disabled={!shoppingList || exporting !== null}
+                disabled={!shoppingList || totalItems === 0}
                 onClick={() => handleExport('pdf')}
               >
-                {exporting === 'pdf' ? '…' : '↓'} PDF
+                ↓ PDF
               </button>
             </div>
           </div>
@@ -166,9 +184,18 @@ export default function CoursesPage() {
           </p>
         )}
 
-        {loadingMenus || loadingList ? (
+        {vaultLocked ? (
+          <div className={styles.empty}>
+            <div className={styles.emptyIcon}>🔒</div>
+            <p className={styles.emptyTitle}>Coffre verrouillé</p>
+            <p className={styles.emptyDesc}>
+              Tes menus sont chiffrés de bout en bout. Reconnecte-toi (ou déverrouille ta
+              session) pour générer ta liste de courses.
+            </p>
+          </div>
+        ) : loadingMenus || loadingList ? (
           <div className={styles.skeleton} style={{ height: 300 }} />
-        ) : menus.length === 0 ? (
+        ) : weeks.length === 0 ? (
           <div className={styles.empty}>
             <div className={styles.emptyIcon}>🛒</div>
             <p className={styles.emptyTitle}>Aucun menu disponible</p>
