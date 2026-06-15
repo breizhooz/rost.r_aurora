@@ -17,14 +17,11 @@ import {
   type NutritionSummary,
 } from '@nutri/e2e-core';
 import { menuClient } from './client';
-import { getUserKey } from '../crypto/vault';
-import {
-  getAllergies,
-  getExcludedFoods,
-  getNutritionPreferences,
-  getCalculations,
-} from './endpoints';
+import { requireUserKey } from '../crypto/vault';
+import { getHealthDoc, deriveNutrition } from './healthVault';
 import type { DayOfWeekKey, MealTypeKey } from '../types';
+
+export { VaultLockedError } from '../crypto/vault';
 
 /** Un créneau du menu (document client, sans id serveur). */
 export interface MenuSlotDoc {
@@ -45,20 +42,6 @@ export interface MenuDocument {
 export interface StoredMenu {
   doc: MenuDocument;
   version: number;
-}
-
-/** Levée quand le coffre est verrouillé (UK absente) : impossible de (dé)chiffrer. */
-export class VaultLockedError extends Error {
-  constructor() {
-    super('Coffre verrouillé : déverrouille ta session pour accéder aux menus chiffrés.');
-    this.name = 'VaultLockedError';
-  }
-}
-
-function requireUserKey(): Uint8Array {
-  const uk = getUserKey();
-  if (uk === null) throw new VaultLockedError();
-  return uk;
 }
 
 const BASE = '/api/v1/menus/me/blobs/weekly_menu';
@@ -129,25 +112,27 @@ export async function listMenuWeeks(): Promise<string[]> {
 }
 
 /**
- * Assemble le résumé nutritionnel (allergies, régime, exclusions, cible) à partir
- * des endpoints de profil, dans la forme attendue par `buildConstraints`. Tant
- * que le profil n'est pas lui-même chiffré (Phase 5), ces données viennent encore
- * du serveur ; la génération de menu, elle, est déjà cliente.
+ * Assemble le résumé nutritionnel (allergies, régime, exclusions, cible) dans la
+ * forme attendue par `buildConstraints`, à partir du **document santé déchiffré**
+ * (E2E). La cible énergétique est dérivée localement (`deriveNutrition`). Le
+ * serveur ne participe plus : il ne voit que le ciphertext.
  */
 export async function buildNutritionSummaryFromProfile(): Promise<NutritionSummary> {
-  const [allergies, excluded, prefs, calc] = await Promise.all([
-    getAllergies().catch(() => []),
-    getExcludedFoods().catch(() => []),
-    getNutritionPreferences().catch(() => null),
-    getCalculations().catch(() => null),
-  ]);
-
+  const stored = await getHealthDoc();
+  const doc = stored?.doc;
+  if (!doc) {
+    return { allergies: [], excluded_foods: [], nutrition_preferences: null, calculation: null };
+  }
+  const calc = deriveNutrition(doc);
   return {
-    allergies: allergies.map((a) => ({ allergen: a.allergen })),
-    excluded_foods: excluded.map((e) => ({ food_name: e.food_name })),
-    nutrition_preferences: prefs
-      ? { diet_type: prefs.diet_type, excluded_foods: prefs.excluded_foods }
+    allergies: doc.allergies.map((a) => ({ allergen: a.allergen })),
+    excluded_foods: doc.excluded_foods.map((e) => ({ food_name: e.food_name })),
+    nutrition_preferences: doc.nutrition
+      ? { diet_type: doc.nutrition.diet_type, excluded_foods: doc.nutrition.excluded_foods }
       : null,
-    calculation: calc ? { target_calories_kcal: calc.target_calories_kcal } : null,
+    calculation:
+      calc?.targetCaloriesKcal != null
+        ? { target_calories_kcal: calc.targetCaloriesKcal }
+        : null,
   };
 }

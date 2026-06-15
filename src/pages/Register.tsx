@@ -1,13 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import {
-  register as apiRegister,
-  login as apiLogin,
-  createProfile,
-  upsertSports,
-  upsertLifestyle,
-  upsertNutrition,
-} from '../api/endpoints';
+import { register as apiRegister, login as apiLogin } from '../api/endpoints';
+// Profil/santé écrits dans le coffre chiffré (E2E) — le vault est déverrouillé
+// juste avant (setUserKey après enrollAccount). Cf. api/healthDoc.ts.
+import { createProfile, upsertSports, upsertLifestyle, upsertNutrition } from '../api/healthDoc';
 import ThemeSwitch from '../components/ThemeSwitch';
 import { enrollAccount } from '@nutri/e2e-core';
 import { enrollKeyMaterial } from '../api/e2eKeys';

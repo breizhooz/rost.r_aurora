@@ -17,16 +17,22 @@ const INTENSITY_HELP: Record<number, string> = {
   1.5: 'Intense — priorité forte au respect de vos cibles : les recettes proches de vos objectifs remontent nettement.',
 };
 import {
-  getMe, getMyProfile, getCalculations, getSportsProfile, getLifestyle, getNutritionPreferences,
+  getMe, requestPasswordReset, changePassword, setupTotp, confirmTotp, disableMfa,
+  getAccountCoach, revokeAccountCoach,
+  getConsents, setHealthConsent, exportMyData, deleteMyAccount,
+} from '../api/endpoints';
+// Données de santé/profil : servies par le coffre chiffré (E2E), via un adaptateur
+// qui conserve les signatures des anciens endpoints serveur. Cf. api/healthDoc.ts.
+import {
+  resetHealthDocCache,
+  getMyProfile, getCalculations, getSportsProfile, getLifestyle, getNutritionPreferences,
   getBodyComposition, getBodyMeasurements, getPerformanceMetrics, getInjuries, getAllergies,
   getExcludedFoods, getConditions, getMedications, createProfile, updateProfile, upsertSports,
   upsertLifestyle, upsertNutrition, addBodyComposition, deleteBodyComposition, addBodyMeasurements,
   deleteBodyMeasurements, addPerformanceMetric, deletePerformanceMetric, addInjury, deleteInjury,
   addAllergy, deleteAllergy, addCondition, deleteCondition, addMedication, deleteMedication,
-  addExcludedFood, deleteExcludedFood, requestPasswordReset, changePassword, setupTotp, confirmTotp, disableMfa,
-  getAccountCoach, revokeAccountCoach,
-  getConsents, setHealthConsent, exportMyData, deleteMyAccount,
-} from '../api/endpoints';
+  addExcludedFood, deleteExcludedFood,
+} from '../api/healthDoc';
 import type {
   UserOut, ProfileResponse, CalculationResponse, SportsProfileResponse, LifestyleProfileResponse,
   NutritionPreferencesResponse, BodyCompositionResponse, BodyMeasurementsResponse, PerformanceMetricResponse,
@@ -338,6 +344,7 @@ export default function AuroraProfil() {
   const [deleteText, setDeleteText] = useState(''); const [deleting, setDeleting] = useState(false); const [deleteErr, setDeleteErr] = useState('');
 
   useEffect(() => {
+    resetHealthDocCache(); // recharge le document chiffré à chaque montage de la page
     Promise.all([
       getMe().then((u) => { setUser(u); setMfaEnabled(u.two_factor_enabled); }),
       getMyProfile().then(setProfile), getCalculations().then(setCalcs), getSportsProfile().then(setSports),
