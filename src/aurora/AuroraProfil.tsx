@@ -1163,7 +1163,7 @@ export default function AuroraProfil() {
                   <div className="rost-notice" role="alert">
                     ⚠️ Notez ce code et conservez-le en lieu sûr : il ne sera plus jamais affiché et
                     remplace tout code précédent.
-                    <pre style={{ fontSize: 16, letterSpacing: '0.12em', textAlign: 'center', padding: '12px 8px', margin: '12px 0 4px', borderRadius: 8, border: '1px solid var(--rule)', userSelect: 'all', wordBreak: 'break-all' }}>{newRecoveryCode}</pre>
+                    <pre style={{ fontSize: 16, letterSpacing: '0.12em', textAlign: 'center', padding: '12px 8px', margin: '12px 0 4px', borderRadius: 8, border: '1px solid var(--rule)', userSelect: 'all', whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflowWrap: 'anywhere' }}>{newRecoveryCode}</pre>
                     <button className="rost-btn rost-btn-ghost" type="button" onClick={() => setNewRecoveryCode(null)}>J’ai noté mon code</button>
                   </div>
                 ) : (

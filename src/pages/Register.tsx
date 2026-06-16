@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { register as apiRegister, login as apiLogin } from '../api/endpoints';
+import { register as apiRegister, login as apiLogin, setHealthConsent } from '../api/endpoints';
 // Profil/santé écrits dans le coffre chiffré (E2E) — le vault est déverrouillé
 // juste avant (setUserKey après enrollAccount). Cf. api/healthDoc.ts.
 import { createProfile, upsertSports, upsertLifestyle, upsertNutrition } from '../api/healthDoc';
@@ -129,6 +129,14 @@ export default function Register() {
       await enrollKeyMaterial(enrollment.payload);
       setUserKey(enrollment.userKey);
 
+      // RGPD (art. 9) : la case « traitement de mes données de santé » est cochée
+      // (obligatoire à l'inscription) → on enregistre ce consentement explicite
+      // AVANT d'écrire le profil. Sinon le garde-fou `require_health_consent`
+      // rejette l'écriture du blob santé (403) et le profil saisi serait perdu
+      // (l'utilisateur se le verrait redemander ensuite). setHealthConsent
+      // rafraîchit aussi l'access token pour que le claim health_consent s'applique.
+      await setHealthConsent(true);
+
       await createProfile({
         date_of_birth:    currentSkipped.has(1) ? null : (fd.date_of_birth || null),
         biological_sex:   currentSkipped.has(1) ? null : (fd.biological_sex || null),
@@ -232,7 +240,8 @@ export default function Register() {
             style={{
               fontSize: 18, letterSpacing: '0.15em', textAlign: 'center',
               padding: '16px 8px', margin: '16px 0', borderRadius: 8,
-              border: '1px solid var(--rule)', userSelect: 'all', wordBreak: 'break-all',
+              border: '1px solid var(--rule)', userSelect: 'all',
+              whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflowWrap: 'anywhere',
             }}
           >{recoveryCode}</pre>
           <button

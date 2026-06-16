@@ -123,7 +123,9 @@ function RecoveryNotice({ code, onDone }: { code: string; onDone: () => void }) 
             background: 'rgba(127,127,127,0.12)',
             fontSize: '1.05rem',
             letterSpacing: '0.04em',
+            whiteSpace: 'pre-wrap',
             wordBreak: 'break-all',
+            overflowWrap: 'anywhere',
             textAlign: 'center',
           }}
         >
