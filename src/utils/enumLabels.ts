@@ -9,6 +9,7 @@ export const COURSE_TYPE_LABELS: Record<string, string> = {
   'enums.course_type.breakfast':  'Petit-déj',
   'enums.course_type.soup':       'Soupe',
   'enums.course_type.salad':      'Salade',
+  'enums.course_type.fruit':      'Fruit',
 };
 
 export const DIFFICULTY_LABELS: Record<string, string> = {

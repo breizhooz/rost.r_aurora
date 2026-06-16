@@ -7,6 +7,7 @@ import type {
   EnrollPayload,
   KeyMaterialDTO,
   RecoveryMaterialDTO,
+  RecoveryRotatePayload,
   RotatePayload,
 } from '@nutri/e2e-core';
 
@@ -37,4 +38,9 @@ export async function getRecoveryMaterial(): Promise<RecoveryMaterialDTO> {
     '/api/v1/users/me/keys/recovery',
   );
   return data;
+}
+
+/** Régénère le code de récupération (invalide l'ancien). Nécessite le coffre déverrouillé. */
+export async function rotateRecoveryMaterial(payload: RecoveryRotatePayload): Promise<void> {
+  await usersClient.put('/api/v1/users/me/keys/recovery', payload);
 }

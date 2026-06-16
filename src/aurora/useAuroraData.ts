@@ -158,6 +158,7 @@ function courseTag(recipe: RecipeResponse | undefined): string {
     'enums.course_type.soup': 'soupe',
     'enums.course_type.side_dish': 'accompagnement',
     'enums.course_type.drink': 'boisson',
+    'enums.course_type.fruit': 'fruit',
   };
   return map[recipe.course_type] ?? 'recette';
 }

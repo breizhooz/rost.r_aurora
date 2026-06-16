@@ -1,6 +1,6 @@
 # rost.r_aurora — Front Rost.r (interface Aurora)
 
-Interface web de **Rost.r**, une application de suivi nutritionnel et de planification de repas. Ce dépôt contient uniquement le frontend (SPA React) ; il consomme les microservices du backend NutriPlanner via HTTPS.
+Interface web de **Rost.r**, une application de suivi nutritionnel et de planification de repas. Ce dépôt contient uniquement le frontend (SPA React) ; il consomme les microservices du backend Rost.r via HTTPS.
 
 ## Fonctionnalités
 
@@ -68,7 +68,7 @@ Les specs OpenAPI correspondantes sont dans `docs/*.openapi.json`.
 ### Prérequis
 
 - Node.js ≥ 18
-- Le backend NutriPlanner lancé en local (Traefik + microservices sur `*.localhost`)
+- Le backend Rost.r lancé en local (Traefik + microservices sur `*.localhost`)
 - Certificats mkcert générés côté backend (`backend/infra/traefik/certs/_wildcard.localhost*.pem`) — sans eux, le dev server retombe automatiquement en HTTP
 
 ### Installation et lancement

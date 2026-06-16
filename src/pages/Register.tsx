@@ -69,6 +69,10 @@ export default function Register() {
   // RGPD : acceptation de la politique de confidentialité (mention art. 9 — données
   // de santé) obligatoire avant de créer le compte.
   const [acceptedPolicy, setAcceptedPolicy] = useState(false);
+  // E2E : passphrase de chiffrement, DISTINCTE du mot de passe de connexion. C'est
+  // elle qui scelle le coffre (zero-knowledge) ; le serveur ne la voit jamais.
+  const [passphrase, setPassphrase] = useState('');
+  const [passphraseConfirm, setPassphraseConfirm] = useState('');
   // E2E : code de récupération à afficher UNE fois après l'inscription des clés,
   // + destination de redirection une fois le code acquitté.
   const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
@@ -98,7 +102,10 @@ export default function Register() {
 
   const checks = pwdChecks(fd.password);
   const isPwdStrong = checks.minLength && checks.hasUpper && checks.hasDigit && checks.hasSpecial;
-  const isStep0Valid = fd.email.trim() !== '' && fd.password !== '' && isPwdStrong && acceptedPolicy;
+  const PASSPHRASE_MIN = 10;
+  const isPassphraseValid = passphrase.length >= PASSPHRASE_MIN && passphrase === passphraseConfirm;
+  const isStep0Valid = fd.email.trim() !== '' && fd.password !== '' && isPwdStrong
+    && isPassphraseValid && acceptedPolicy;
 
   const addSport = () => {
     const s = sportsInput.trim();
@@ -115,9 +122,10 @@ export default function Register() {
       if (!('access_token' in loginResult)) throw new Error('Réponse inattendue du serveur');
       setSession(loginResult.access_token);
 
-      // E2E : génère la User Key + code de récupération, enveloppe et inscrit le
+      // E2E : génère la User Key + code de récupération à partir de la PASSPHRASE
+      // de chiffrement (≠ mot de passe de connexion), enveloppe et inscrit le
       // matériel de clés ; garde la UK en mémoire (coffre).
-      const enrollment = await enrollAccount(fd.password);
+      const enrollment = await enrollAccount(passphrase);
       await enrollKeyMaterial(enrollment.payload);
       setUserKey(enrollment.userKey);
 
@@ -214,8 +222,11 @@ export default function Register() {
           <p className="rost-auth-sub">Notez-le et conservez-le en lieu sûr</p>
           <div className="rost-notice" role="alert" style={{ marginTop: 12 }}>
             ⚠️ Vos données de santé sont chiffrées de bout en bout. <strong>Ce code est
-            le seul moyen de les récupérer si vous oubliez votre mot de passe.</strong>{' '}
+            le seul moyen de les récupérer si vous oubliez votre passphrase de chiffrement.</strong>{' '}
             Il ne vous sera plus jamais affiché et nous ne pouvons pas le régénérer.
+            <br />
+            Avec votre passphrase <em>ou</em> ce code, vous retrouvez vos données{' '}
+            <strong>sur tous vos appareils</strong> (web et mobile).
           </div>
           <pre
             style={{
@@ -270,7 +281,7 @@ export default function Register() {
             {step === 0 && <>
               <div className="rost-reg-header">
                 <h2>Créer un compte</h2>
-                <p>Rejoignez NutriPlanner et planifiez votre nutrition</p>
+                <p>Rejoignez Rost.r et planifiez votre nutrition</p>
               </div>
 
               <div className="rost-reg-field">
@@ -284,6 +295,28 @@ export default function Register() {
                 <input id="password" type="password" value={fd.password} onChange={upd('password')}
                   placeholder="••••••••" autoComplete="new-password" required disabled={loading} />
                 <PasswordStrength password={fd.password} />
+              </div>
+
+              <div className="rost-reg-field">
+                <label htmlFor="passphrase">Passphrase de chiffrement</label>
+                <input id="passphrase" type="password" value={passphrase}
+                  onChange={(e) => setPassphrase(e.target.value)}
+                  placeholder={`${PASSPHRASE_MIN} caractères minimum`} autoComplete="off"
+                  required disabled={loading} />
+                <p className="rost-reg-hint" style={{ fontSize: 12, lineHeight: 1.4, marginTop: 4, opacity: 0.8 }}>
+                  Protège vos menus et données de santé. <strong>Différente</strong> du mot de passe
+                  ci-dessus, elle n’est jamais transmise : nous ne pouvons ni la voir ni la réinitialiser.
+                </p>
+              </div>
+
+              <div className="rost-reg-field">
+                <label htmlFor="passphrase2">Confirmer la passphrase</label>
+                <input id="passphrase2" type="password" value={passphraseConfirm}
+                  onChange={(e) => setPassphraseConfirm(e.target.value)}
+                  placeholder="••••••••••" autoComplete="off" required disabled={loading} />
+                {passphraseConfirm.length > 0 && passphrase !== passphraseConfirm && (
+                  <p className="rost-error" style={{ marginTop: 4 }}>Les deux passphrases ne correspondent pas.</p>
+                )}
               </div>
 
               <label className="rost-reg-consent" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, lineHeight: 1.5, marginTop: 4 }}>
