@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import AuroraShell from './AuroraShell';
-import { getMe, searchRecipesPage, getNutritionPreferences } from '../api/endpoints';
+import { getMe, searchRecipesPage } from '../api/endpoints';
+import { getNutritionPreferences } from '../api/healthDoc'; // préférences depuis le coffre chiffré (E2E)
 import type { SearchRecipeResult, SearchResponse, UserOut } from '../types';
 import { COURSE_TYPE_LABELS, courseTypeLabel } from '../utils/enumLabels';
 import { useRefreshSignal } from '../utils/liveRefresh';

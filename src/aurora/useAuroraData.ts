@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  getMe,
-  getMyProfile,
-  getCalculations,
-  getSportsProfile,
-  getMenus,
-  listAllRecipes,
-} from '../api/endpoints';
+import { getMe, listAllRecipes } from '../api/endpoints';
+import { getHealthDoc, deriveNutrition } from '../api/healthVault';
+import { listMenuWeeks, getMenuBlob } from '../api/menuVault';
+import { isVaultUnlocked } from '../crypto/vault';
 import { useRefreshSignal } from '../utils/liveRefresh';
-import type {
-  UserOut,
-  ProfileResponse,
-  CalculationResponse,
-  SportsProfileResponse,
-  WeeklyMenuResponse,
-  MenuSlotResponse,
-  RecipeResponse,
-  DayOfWeekKey,
-  MealTypeKey,
-} from '../types';
+import type { UserOut, RecipeResponse, DayOfWeekKey, MealTypeKey } from '../types';
+
+// ── Formes minimales consommées par buildViewModel (E2E : dérivées du document
+// santé déchiffré + des blobs menu, plus des réponses serveur). ──────────────
+interface SlotLike { day_of_week: DayOfWeekKey; meal_type: MealTypeKey; recipe_id: number; }
+interface MenuLike { start_date: string; slots: SlotLike[]; }
+interface CalcLike {
+  tdee_kcal: number | null;
+  macros: { proteins_g: number; carbs_g: number; fats_g: number; tdee_kcal: number } | null;
+}
+interface ProfileLike { weight_kg: number | null; target_weight_kg: number | null; }
+interface SportsLike { resting_heart_rate_bpm: number | null; sessions_per_week: number | null; }
+
+/** Nombre de semaines de menus chargées pour le dashboard (journal/graphe). */
+const DASHBOARD_WEEKS = 6;
 
 const DAY_INDEX: Record<DayOfWeekKey, number> = {
   'enums.day.monday': 0,
@@ -130,7 +130,7 @@ function num(v: number | null | undefined): number {
   return v == null ? 0 : Math.round(v);
 }
 
-function pickCurrentMenu(menus: WeeklyMenuResponse[]): WeeklyMenuResponse | null {
+function pickCurrentMenu(menus: MenuLike[]): MenuLike | null {
   if (menus.length === 0) return null;
   const now = Date.now();
   const withStart = menus
@@ -158,17 +158,18 @@ function courseTag(recipe: RecipeResponse | undefined): string {
     'enums.course_type.soup': 'soupe',
     'enums.course_type.side_dish': 'accompagnement',
     'enums.course_type.drink': 'boisson',
+    'enums.course_type.fruit': 'fruit',
   };
   return map[recipe.course_type] ?? 'recette';
 }
 
 function buildViewModel(
   user: UserOut,
-  profile: ProfileResponse | null,
-  calc: CalculationResponse | null,
-  sports: SportsProfileResponse | null,
-  menu: WeeklyMenuResponse | null,
-  menus: WeeklyMenuResponse[],
+  profile: ProfileLike | null,
+  calc: CalcLike | null,
+  sports: SportsLike | null,
+  menu: MenuLike | null,
+  menus: MenuLike[],
   recipes: RecipeResponse[],
 ): AuroraViewModel {
   const recipeMap = new Map<number, RecipeResponse>();
@@ -185,7 +186,7 @@ function buildViewModel(
   const hasGoal = goal.kcal > 0;
 
   // ── Slots groupés par jour ──────────────────────────────────────────────
-  const slotsByDay: Record<number, MenuSlotResponse[]> = {};
+  const slotsByDay: Record<number, SlotLike[]> = {};
   for (const slot of menu?.slots ?? []) {
     const idx = DAY_INDEX[slot.day_of_week] ?? 0;
     (slotsByDay[idx] ??= []).push(slot);
@@ -197,7 +198,7 @@ function buildViewModel(
   const ti = todayIndex();
   const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
 
-  const slotMacros = (slot: MenuSlotResponse) => {
+  const slotMacros = (slot: SlotLike) => {
     const r = recipeMap.get(slot.recipe_id);
     return {
       title: r?.title ?? `Recette #${slot.recipe_id}`,
@@ -326,14 +327,52 @@ export function useAuroraData() {
     setLoading(true);
     (async () => {
       try {
-        const [user, profile, calc, sports, menus, recipes] = await Promise.all([
+        const [user, recipes] = await Promise.all([
           getMe(),
-          getMyProfile(),
-          getCalculations(),
-          getSportsProfile(),
-          getMenus(),
           listAllRecipes().catch(() => [] as RecipeResponse[]),
         ]);
+
+        // Santé + menus = données chiffrées (E2E). Sans coffre déverrouillé, on
+        // rend un dashboard « vide » (profil/objectif/menus indisponibles) plutôt
+        // qu'une erreur. Le calcul métabolique est dérivé localement du document.
+        let profile: ProfileLike | null = null;
+        let sports: SportsLike | null = null;
+        let calc: CalcLike | null = null;
+        let menus: MenuLike[] = [];
+
+        if (isVaultUnlocked()) {
+          const stored = await getHealthDoc().catch(() => null);
+          const doc = stored?.doc ?? null;
+          if (doc) {
+            profile = doc.profile
+              ? { weight_kg: doc.profile.weight_kg, target_weight_kg: doc.profile.target_weight_kg }
+              : null;
+            sports = doc.sports
+              ? {
+                  resting_heart_rate_bpm: doc.sports.resting_heart_rate_bpm,
+                  sessions_per_week: doc.sports.sessions_per_week,
+                }
+              : null;
+            const nutri = deriveNutrition(doc);
+            if (nutri) {
+              calc = {
+                tdee_kcal: nutri.tdeeKcal,
+                macros: nutri.macros
+                  ? {
+                      proteins_g: nutri.macros.proteinsG,
+                      carbs_g: nutri.macros.carbsG,
+                      fats_g: nutri.macros.fatsG,
+                      tdee_kcal: nutri.targetCaloriesKcal ?? nutri.tdeeKcal,
+                    }
+                  : null,
+              };
+            }
+          }
+          const weeks = (await listMenuWeeks().catch(() => [])).slice(0, DASHBOARD_WEEKS);
+          const loaded = await Promise.all(weeks.map((w) => getMenuBlob(w).catch(() => null)));
+          menus = loaded.flatMap((s) => (s ? [s.doc] : []));
+        }
+
         if (cancelled) return;
         const menu = pickCurrentMenu(menus);
         setVm(buildViewModel(user, profile, calc, sports, menu, menus, recipes));

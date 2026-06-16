@@ -3,15 +3,9 @@ import Login           from './pages/Login'
 import Register        from './pages/Register'
 import ForgotPassword  from './pages/ForgotPassword'
 import OAuthCallback   from './pages/OAuthCallback'
+import VaultGate       from './pages/VaultGate'
 import AcceptInvite    from './pages/AcceptInvite'
 import Confidentialite from './pages/Confidentialite'
-import Dashboard    from './pages/Dashboard'
-import ProfilePage  from './pages/ProfilePage'
-import HubPage      from './pages/HubPage'
-import JournalPage  from './pages/JournalPage'
-import MenusPage    from './pages/MenusPage'
-import CoursesPage  from './pages/CoursesPage'
-import RecettesPage from './pages/RecettesPage'
 import AuroraDashboard from './aurora/AuroraDashboard'
 import AuroraJournal   from './aurora/AuroraJournal'
 import AuroraSemaine   from './aurora/AuroraSemaine'
@@ -36,6 +30,7 @@ export default function App() {
         <Route path="/register"         element={<Register />} />
         <Route path="/forgot-password"  element={<ForgotPassword />} />
         <Route path="/oauth/callback"   element={<OAuthCallback />} />
+        <Route path="/vault"            element={<VaultGate />} />
         <Route path="/accept-invite"    element={<AcceptInvite />} />
         <Route path="/confidentialite"  element={<Confidentialite />} />
         {/* ── Aurora = interface principale (racine) ── */}
@@ -49,16 +44,9 @@ export default function App() {
         <Route path="/hub"       element={<P><AuroraHub /></P>} />
         <Route path="/notifications" element={<P><AuroraNotifications /></P>} />
         <Route path="/admin"     element={<P><AuroraAdmin /></P>} />
-        {/* ── Ancienne interface, conservée sous /old ── */}
-        <Route path="/old/dashboard" element={<P><Dashboard /></P>} />
-        <Route path="/old/profile"   element={<P><ProfilePage /></P>} />
-        <Route path="/old/hub"       element={<P><HubPage /></P>} />
-        <Route path="/old/journal"   element={<P><JournalPage /></P>} />
-        <Route path="/old/menus"     element={<P><MenusPage /></P>} />
-        <Route path="/old/courses"   element={<P><CoursesPage /></P>} />
-        <Route path="/old/recettes"  element={<P><RecettesPage /></P>} />
-        {/* ── Redirections des anciens chemins /aurora/* vers la racine ── */}
+        {/* ── Anciens chemins (/aurora/*, /old/*) → racine ── */}
         <Route path="/aurora/*"  element={<Navigate to="/dashboard" replace />} />
+        <Route path="/old/*"     element={<Navigate to="/dashboard" replace />} />
         <Route path="*"          element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>

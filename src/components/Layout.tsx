@@ -30,7 +30,7 @@ export default function Layout({ children, userEmail }: Props) {
         <div className={styles.navLeft}>
           <div className={styles.navLogo} onClick={() => navigate('/old/dashboard')} role="link" tabIndex={0}>
             <LeafSvg />
-            <span>NutriPlanner</span>
+            <span>Rost.r</span>
           </div>
         </div>
 

@@ -6,6 +6,9 @@ import { useAccount } from '../context/AccountContext';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { decodeAccessContext } from '../utils/accessContext';
 import { apiErrorMessage } from '../utils/apiError';
+import { rewrapForNewPassword, rewrapForNewRecovery } from '@nutri/e2e-core';
+import { rotateKeyMaterial, rotateRecoveryMaterial, getKeyMaterial } from '../api/e2eKeys';
+import { getUserKey } from '../crypto/vault';
 
 const RULE_INTENSITIES: [string, number][] = [['Doux', 0.5], ['Modéré', 1.0], ['Intense', 1.5]];
 const INTENSITY_HELP: Record<number, string> = {
@@ -14,16 +17,22 @@ const INTENSITY_HELP: Record<number, string> = {
   1.5: 'Intense — priorité forte au respect de vos cibles : les recettes proches de vos objectifs remontent nettement.',
 };
 import {
-  getMe, getMyProfile, getCalculations, getSportsProfile, getLifestyle, getNutritionPreferences,
+  getMe, requestPasswordReset, changePassword, setupTotp, confirmTotp, disableMfa,
+  getAccountCoach, revokeAccountCoach,
+  getConsents, setHealthConsent, exportMyData, deleteMyAccount,
+} from '../api/endpoints';
+// Données de santé/profil : servies par le coffre chiffré (E2E), via un adaptateur
+// qui conserve les signatures des anciens endpoints serveur. Cf. api/healthDoc.ts.
+import {
+  resetHealthDocCache,
+  getMyProfile, getCalculations, getSportsProfile, getLifestyle, getNutritionPreferences,
   getBodyComposition, getBodyMeasurements, getPerformanceMetrics, getInjuries, getAllergies,
   getExcludedFoods, getConditions, getMedications, createProfile, updateProfile, upsertSports,
   upsertLifestyle, upsertNutrition, addBodyComposition, deleteBodyComposition, addBodyMeasurements,
   deleteBodyMeasurements, addPerformanceMetric, deletePerformanceMetric, addInjury, deleteInjury,
   addAllergy, deleteAllergy, addCondition, deleteCondition, addMedication, deleteMedication,
-  addExcludedFood, deleteExcludedFood, requestPasswordReset, changePassword, setupTotp, confirmTotp, disableMfa,
-  getAccountCoach, revokeAccountCoach,
-  getConsents, setHealthConsent, exportMyData, deleteMyAccount,
-} from '../api/endpoints';
+  addExcludedFood, deleteExcludedFood,
+} from '../api/healthDoc';
 import type {
   UserOut, ProfileResponse, CalculationResponse, SportsProfileResponse, LifestyleProfileResponse,
   NutritionPreferencesResponse, BodyCompositionResponse, BodyMeasurementsResponse, PerformanceMetricResponse,
@@ -309,6 +318,11 @@ export default function AuroraProfil() {
   const [pwdResetLoading, setPwdResetLoading] = useState(false);
   const [pwdCurrent, setPwdCurrent] = useState(''); const [pwdNew, setPwdNew] = useState(''); const [pwdConfirm, setPwdConfirm] = useState('');
   const [pwdSaving, setPwdSaving] = useState(false); const [pwdErr, setPwdErr] = useState(''); const [pwdOk, setPwdOk] = useState(false);
+  // E2E : changement de passphrase de chiffrement (≠ mot de passe de connexion).
+  const [passNew, setPassNew] = useState(''); const [passConfirm, setPassConfirm] = useState('');
+  const [passSaving, setPassSaving] = useState(false); const [passErr, setPassErr] = useState(''); const [passOk, setPassOk] = useState(false);
+  // E2E : régénération du code de récupération (affiché une seule fois).
+  const [recBusy, setRecBusy] = useState(false); const [recErr, setRecErr] = useState(''); const [newRecoveryCode, setNewRecoveryCode] = useState<string | null>(null);
   const [totpSetup, setTotpSetup] = useState<TotpSetupResponse | null>(null);
   const [totpCode, setTotpCode] = useState(''); const [totpLoading, setTotpLoading] = useState(false);
   const [totpErr, setTotpErr] = useState(''); const [totpDone, setTotpDone] = useState(false);
@@ -335,6 +349,7 @@ export default function AuroraProfil() {
   const [deleteText, setDeleteText] = useState(''); const [deleting, setDeleting] = useState(false); const [deleteErr, setDeleteErr] = useState('');
 
   useEffect(() => {
+    resetHealthDocCache(); // recharge le document chiffré à chaque montage de la page
     Promise.all([
       getMe().then((u) => { setUser(u); setMfaEnabled(u.two_factor_enabled); }),
       getMyProfile().then(setProfile), getCalculations().then(setCalcs), getSportsProfile().then(setSports),
@@ -412,7 +427,7 @@ export default function AuroraProfil() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `nutriplanner-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `rostr-export-${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
     } catch (e: unknown) {
@@ -1100,10 +1115,78 @@ export default function AuroraProfil() {
                   if (pwdNew !== pwdConfirm) { setPwdErr('Les mots de passe ne correspondent pas.'); return; }
                   if (pwdNew.length < 8) { setPwdErr('Au moins 8 caractères.'); return; }
                   setPwdSaving(true); setPwdErr(''); setPwdOk(false);
-                  try { await changePassword(pwdCurrent, pwdNew); setPwdOk(true); setPwdCurrent(''); setPwdNew(''); setPwdConfirm(''); }
+                  try {
+                    // E2E : le mot de passe de connexion ne (dé)verrouille PLUS le coffre
+                    // (modèle « passphrase de chiffrement séparée ») → on ne touche pas au
+                    // matériel de clés ici. Voir la carte « Passphrase de chiffrement ».
+                    await changePassword(pwdCurrent, pwdNew);
+                    setPwdOk(true); setPwdCurrent(''); setPwdNew(''); setPwdConfirm('');
+                  }
                   catch (e: unknown) { setPwdErr(apiErrorMessage(e, 'Erreur lors du changement.')); }
                   setPwdSaving(false);
                 }}>{pwdSaving ? 'Enregistrement…' : 'Changer le mot de passe'}</button>
+              </div>
+            </article>
+
+            <article className="rost-card rost-grid-full">
+              <div className="rost-card-head"><span className="rost-card-title">Passphrase de chiffrement</span></div>
+              <p className="rost-rd-text" style={{ marginTop: -4 }}>
+                Distincte du mot de passe de connexion, elle protège vos menus et données de santé
+                (chiffrement de bout en bout). Avec elle ou votre code de récupération, vous retrouvez
+                vos données sur tous vos appareils. Ces actions nécessitent un coffre déverrouillé.
+              </p>
+
+              {/* Changer la passphrase : ré-enveloppe la UK (les données ne sont pas re-chiffrées). */}
+              <div className="rost-form" style={{ maxWidth: 420 }}>
+                <label className="rost-form-group"><span>Nouvelle passphrase</span><input type="password" className="rost-form-input" value={passNew} onChange={(e) => { setPassNew(e.target.value); setPassErr(''); setPassOk(false); }} autoComplete="new-password" placeholder="10 caractères minimum" /></label>
+                <label className="rost-form-group"><span>Confirmer</span><input type="password" className="rost-form-input" value={passConfirm} onChange={(e) => { setPassConfirm(e.target.value); setPassErr(''); setPassOk(false); }} autoComplete="new-password" /></label>
+                {passErr && <p className="rost-error">{passErr}</p>}
+                {passOk && <p className="rost-profil-ok">✓ Passphrase mise à jour.</p>}
+                <button className="rost-add-btn" disabled={passSaving || !passNew || !passConfirm} onClick={async () => {
+                  const uk = getUserKey();
+                  if (!uk) { setPassErr('Coffre verrouillé : reconnectez-vous pour changer votre passphrase.'); return; }
+                  if (passNew !== passConfirm) { setPassErr('Les passphrases ne correspondent pas.'); return; }
+                  if (passNew.length < 10) { setPassErr('Au moins 10 caractères.'); return; }
+                  setPassSaving(true); setPassErr(''); setPassOk(false);
+                  try {
+                    await rotateKeyMaterial(await rewrapForNewPassword(uk, passNew));
+                    setPassOk(true); setPassNew(''); setPassConfirm('');
+                  } catch (e: unknown) { setPassErr(apiErrorMessage(e, 'Erreur lors du changement de passphrase.')); }
+                  setPassSaving(false);
+                }}>{passSaving ? 'Enregistrement…' : 'Changer la passphrase'}</button>
+              </div>
+
+              {/* Régénérer le code de récupération (l'ancien est invalidé). */}
+              <div className="rost-form" style={{ maxWidth: 420, marginTop: 16 }}>
+                <span className="rost-pstat-label">Code de récupération</span>
+                {newRecoveryCode ? (
+                  <div className="rost-notice" role="alert">
+                    ⚠️ Notez ce code et conservez-le en lieu sûr : il ne sera plus jamais affiché et
+                    remplace tout code précédent.
+                    <pre style={{ fontSize: 16, letterSpacing: '0.12em', textAlign: 'center', padding: '12px 8px', margin: '12px 0 4px', borderRadius: 8, border: '1px solid var(--rule)', userSelect: 'all', whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflowWrap: 'anywhere' }}>{newRecoveryCode}</pre>
+                    <button className="rost-btn rost-btn-ghost" type="button" onClick={() => setNewRecoveryCode(null)}>J’ai noté mon code</button>
+                  </div>
+                ) : (
+                  <>
+                    {recErr && <p className="rost-error">{recErr}</p>}
+                    <button className="rost-btn rost-btn-ghost" disabled={recBusy} onClick={async () => {
+                      const uk = getUserKey();
+                      if (!uk) { setRecErr('Coffre verrouillé : reconnectez-vous pour régénérer votre code.'); return; }
+                      if (!window.confirm('Générer un nouveau code de récupération ? L’ancien sera immédiatement invalidé.')) return;
+                      setRecBusy(true); setRecErr('');
+                      try {
+                        const material = await getKeyMaterial();
+                        const params = material
+                          ? { memoryMiB: material.kdf_params.memory_mib, iterations: material.kdf_params.iterations, parallelism: material.kdf_params.parallelism }
+                          : undefined;
+                        const res = await rewrapForNewRecovery(uk, params);
+                        await rotateRecoveryMaterial(res.payload);
+                        setNewRecoveryCode(res.recoveryCode);
+                      } catch (e: unknown) { setRecErr(apiErrorMessage(e, 'Erreur lors de la régénération du code.')); }
+                      setRecBusy(false);
+                    }}>{recBusy ? 'Génération…' : 'Générer un nouveau code de récupération'}</button>
+                  </>
+                )}
               </div>
             </article>
 

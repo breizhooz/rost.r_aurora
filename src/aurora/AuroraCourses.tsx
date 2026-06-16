@@ -1,8 +1,15 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AuroraShell from './AuroraShell';
-import { getMe, getMenus, getShoppingList, exportShoppingList } from '../api/endpoints';
-import type { WeeklyMenuResponse, ShoppingList, ShoppingItem, UserOut } from '../types';
+import { getMe, listAllRecipes } from '../api/endpoints';
+import { listMenuWeeks, getMenuBlob, VaultLockedError } from '../api/menuVault';
+import { isVaultUnlocked } from '../crypto/vault';
+import { exportShoppingCsv, exportShoppingPdf } from '../utils/shoppingExport';
+import { buildShoppingList, type ShoppingItem, type Recipe } from '@nutri/e2e-core';
+import type { UserOut } from '../types';
+
+/** Liste de courses calculée client (le menu n'existe que déchiffré). */
+interface ShoppingView { start_date: string; nb_persons: number; items: ShoppingItem[]; }
 
 const CATEGORY_META: Record<string, { label: string; icon: string }> = {
   'enums.type_of_ingredient.vegetable': { label: 'Légumes', icon: '🥦' },
@@ -24,7 +31,8 @@ function catMeta(cat: string | null) {
   return { label: cat ? cat.split('.').pop()!.replace(/_/g, ' ') : 'Divers', icon: '🛒' };
 }
 function fmtDate(iso: string) { return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }); }
-function menuLabel(m: WeeklyMenuResponse) { return `Semaine du ${fmtDate(m.start_date)} — ${m.nb_persons} pers.`; }
+function weekLabel(week: string) { return `Semaine du ${fmtDate(week)}`; }
+const categoryLabel = (cat: string | null) => catMeta(cat).label;
 function initials(email: string) {
   const parts = email.split('@')[0].split(/[._-]/);
   return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('') || '??';
@@ -39,11 +47,6 @@ function groupByCategory(items: ShoppingItem[]): [string | null, ShoppingItem[]]
     if (ia === -1) return 1; if (ib === -1) return -1; return ia - ib;
   });
 }
-function download(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob); const a = document.createElement('a');
-  a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url);
-}
-
 /** Clé de l'onglet « Tout » (liste complète, toutes catégories). */
 const ALL_TAB = '_all';
 
@@ -69,43 +72,61 @@ function CatCard({ cat, items }: { cat: string | null; items: ShoppingItem[] }) 
 
 export default function AuroraCourses() {
   const [searchParams] = useSearchParams();
-  const menuParam = searchParams.get('menu');
+  const weekParam = searchParams.get('week');
   const [user, setUser] = useState<UserOut | null>(null);
-  const [menus, setMenus] = useState<WeeklyMenuResponse[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [list, setList] = useState<ShoppingList | null>(null);
+  const [weeks, setWeeks] = useState<string[]>([]);
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
+  const [list, setList] = useState<ShoppingView | null>(null);
   const [loadingMenus, setLoadingMenus] = useState(true);
   const [loadingList, setLoadingList] = useState(false);
-  const [exporting, setExporting] = useState<'csv' | 'pdf' | null>(null);
+  const [vaultLocked, setVaultLocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeCat, setActiveCat] = useState<string>(ALL_TAB);
 
+  // Catalogue public (id → recette) pour résoudre les ingrédients localement.
+  const recipesById = useRef<Map<number, Recipe>>(new Map());
+
   useEffect(() => { getMe().then(setUser).catch(() => {}); }, []);
   useEffect(() => {
-    getMenus().then((data) => {
-      const sorted = [...data].sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
-      setMenus(sorted);
-      const fromParam = menuParam ? Number(menuParam) : null;
-      setSelectedId(fromParam && sorted.find((m) => m.id === fromParam) ? fromParam : sorted[0]?.id ?? null);
-    }).finally(() => setLoadingMenus(false));
-  }, [menuParam]);
+    if (!isVaultUnlocked()) { setVaultLocked(true); setLoadingMenus(false); return; }
+    Promise.all([
+      listMenuWeeks(),
+      listAllRecipes().then((items) => {
+        recipesById.current = new Map(items.map((r) => [r.id, r as unknown as Recipe]));
+      }),
+    ])
+      .then(([ws]) => {
+        setWeeks(ws);
+        setSelectedWeek(weekParam && ws.includes(weekParam) ? weekParam : ws[0] ?? null);
+      })
+      .catch(() => setError('Impossible de charger les menus.'))
+      .finally(() => setLoadingMenus(false));
+  }, [weekParam]);
   useEffect(() => {
-    if (selectedId === null) { setList(null); return; }
+    if (selectedWeek === null) { setList(null); return; }
     setLoadingList(true); setError(null);
-    getShoppingList(selectedId).then(setList)
-      .catch(() => setError('Impossible de charger la liste de courses.'))
+    getMenuBlob(selectedWeek)
+      .then((stored) => {
+        if (!stored) { setList(null); return; }
+        setList({
+          start_date: stored.doc.start_date,
+          nb_persons: stored.doc.nb_persons,
+          items: buildShoppingList(stored.doc.slots, recipesById.current),
+        });
+      })
+      .catch((err) => {
+        if (err instanceof VaultLockedError) setVaultLocked(true);
+        setError('Impossible de charger la liste de courses.');
+      })
       .finally(() => setLoadingList(false));
-  }, [selectedId]);
+  }, [selectedWeek]);
 
-  const handleExport = useCallback(async (format: 'csv' | 'pdf') => {
-    if (!selectedId) return;
-    setExporting(format);
-    try {
-      const blob = await exportShoppingList(selectedId, format);
-      const menu = menus.find((m) => m.id === selectedId);
-      download(blob, `courses-${menu?.start_date ?? selectedId}.${format}`);
-    } catch { setError("L'export a échoué."); } finally { setExporting(null); }
-  }, [selectedId, menus]);
+  const handleExport = useCallback((format: 'csv' | 'pdf') => {
+    if (!list) return;
+    const data = { startDate: list.start_date, nbPersons: list.nb_persons, items: list.items };
+    if (format === 'csv') exportShoppingCsv(data, categoryLabel);
+    else exportShoppingPdf(data, categoryLabel);
+  }, [list]);
 
   const groups = list ? groupByCategory(list.items) : [];
   const total = list?.items.length ?? 0;
@@ -120,26 +141,28 @@ export default function AuroraCourses() {
       subtitle={list ? `${total} ingrédient${total > 1 ? 's' : ''} · ${list.nb_persons} pers.` : undefined}>
       <div className="rost-page">
         <div className="rost-toolbar">
-          {!loadingMenus && menus.length > 0 && (
-            <select className="rost-select" value={selectedId ?? ''} onChange={(e) => setSelectedId(Number(e.target.value))}>
-              {menus.map((m) => <option key={m.id} value={m.id}>{menuLabel(m)}</option>)}
+          {!loadingMenus && weeks.length > 0 && (
+            <select className="rost-select" value={selectedWeek ?? ''} onChange={(e) => setSelectedWeek(e.target.value)}>
+              {weeks.map((w) => <option key={w} value={w}>{weekLabel(w)}</option>)}
             </select>
           )}
           <div className="rost-toolbar-actions">
-            <button className="rost-btn" disabled={!list || exporting !== null} onClick={() => handleExport('csv')}>
-              {exporting === 'csv' ? '…' : '↓'} CSV
+            <button className="rost-btn" disabled={!list || total === 0} onClick={() => handleExport('csv')}>
+              ↓ CSV
             </button>
-            <button className="rost-btn" disabled={!list || exporting !== null} onClick={() => handleExport('pdf')}>
-              {exporting === 'pdf' ? '…' : '↓'} PDF
+            <button className="rost-btn" disabled={!list || total === 0} onClick={() => handleExport('pdf')}>
+              ↓ PDF
             </button>
           </div>
         </div>
 
         {error && <p className="rost-error">{error}</p>}
 
-        {loadingMenus || loadingList ? (
+        {vaultLocked ? (
+          <div className="rost-empty rost-empty-block">🔒 Coffre verrouillé — reconnecte-toi pour accéder à ta liste de courses chiffrée.</div>
+        ) : loadingMenus || loadingList ? (
           <div className="rost-skel" style={{ height: 320 }} />
-        ) : menus.length === 0 ? (
+        ) : weeks.length === 0 ? (
           <div className="rost-empty rost-empty-block">Aucun menu — génère un menu hebdo depuis la page Semaine.</div>
         ) : !list || total === 0 ? (
           <div className="rost-empty rost-empty-block">Aucun ingrédient pour ce menu.</div>

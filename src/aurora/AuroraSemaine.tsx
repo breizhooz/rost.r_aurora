@@ -3,12 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import AuroraShell from './AuroraShell';
 import AuroraRecipeModal from './AuroraRecipeModal';
 import { apiErrorMessage } from '../utils/apiError';
+import { getMe, listAllRecipes } from '../api/endpoints';
+import { getCalculations } from '../api/healthDoc';
 import {
-  getMe, getMenus, generateMenu, updateMenu, deleteMenu, listAllRecipes, getCalculations,
-} from '../api/endpoints';
-import type {
-  WeeklyMenuResponse, MenuSlotCreate, MenuSlotResponse, DayOfWeekKey, MealTypeKey, RecipeResponse, UserOut,
-} from '../types';
+  getMenuBlob, putMenuBlob, deleteMenuBlob, buildNutritionSummaryFromProfile,
+  VaultLockedError, type MenuDocument, type MenuSlotDoc,
+} from '../api/menuVault';
+import { isVaultUnlocked } from '../crypto/vault';
+import { generateWeeklyMenu } from '@nutri/e2e-core';
+import type { DayOfWeekKey, MealTypeKey, RecipeResponse, UserOut } from '../types';
 
 const DAYS: { key: DayOfWeekKey; label: string }[] = [
   { key: 'enums.day.monday', label: 'Lun' },
@@ -52,7 +55,9 @@ export default function AuroraSemaine() {
   const navigate = useNavigate();
   const [user, setUser] = useState<UserOut | null>(null);
   const [weekStart, setWeekStart] = useState<Date>(() => getMonday(new Date()));
-  const [activeMenu, setActiveMenu] = useState<WeeklyMenuResponse | null>(null);
+  const [activeMenu, setActiveMenu] = useState<MenuDocument | null>(null);
+  const [menuVersion, setMenuVersion] = useState<number | null>(null);
+  const [vaultLocked, setVaultLocked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState('');
@@ -63,19 +68,26 @@ export default function AuroraSemaine() {
   const [recipeSearch, setRecipeSearch] = useState('');
   const [persons, setPersons] = useState(2);
   const [detailSlug, setDetailSlug] = useState<string | null>(null);
-  const [detailSlot, setDetailSlot] = useState<MenuSlotResponse | null>(null);
+  const [detailSlot, setDetailSlot] = useState<MenuSlotDoc | null>(null);
 
   const weekKey = isoDate(weekStart);
 
   const load = useCallback(async () => {
     setLoading(true);
+    if (!isVaultUnlocked()) {
+      setVaultLocked(true); setActiveMenu(null); setMenuVersion(null); setLoading(false);
+      return;
+    }
+    setVaultLocked(false);
     try {
-      const [all, calc] = await Promise.all([getMenus(), getCalculations()]);
+      const [stored, calc] = await Promise.all([getMenuBlob(weekKey), getCalculations()]);
       if (calc?.tdee_kcal) setTdee(Math.round(calc.tdee_kcal));
-      const found = all.find((m) => m.start_date === weekKey) ?? null;
-      setActiveMenu(found);
-      if (found) setPersons(found.nb_persons);
-    } catch { setActiveMenu(null); }
+      if (stored) { setActiveMenu(stored.doc); setMenuVersion(stored.version); setPersons(stored.doc.nb_persons); }
+      else { setActiveMenu(null); setMenuVersion(null); }
+    } catch (err) {
+      if (err instanceof VaultLockedError) setVaultLocked(true);
+      setActiveMenu(null); setMenuVersion(null);
+    }
     setLoading(false);
   }, [weekKey]);
 
@@ -86,32 +98,47 @@ export default function AuroraSemaine() {
   async function handleGenerate() {
     setGenerating(true); setGenError('');
     try {
-      const menu = await generateMenu({ start_date: weekKey, nb_persons: persons, caloric_target: tdee ?? undefined });
-      setActiveMenu(menu);
+      // Génération 100 % cliente : contraintes du profil (coffre santé) + catalogue
+      // public, puis chiffrement et rangement dans le coffre weekly_menu.
+      const summary = await buildNutritionSummaryFromProfile();
+      const slots = generateWeeklyMenu(recipes, {
+        nbPersons: persons, summary, caloricTarget: tdee ?? null, durationDays: 7,
+      }) as MenuSlotDoc[];
+      const doc: MenuDocument = { start_date: weekKey, nb_persons: persons, slots };
+      const version = await putMenuBlob(weekKey, doc, menuVersion ?? undefined);
+      setActiveMenu(doc); setMenuVersion(version);
     } catch (err: unknown) {
-      setGenError(apiErrorMessage(err, "Impossible de générer le menu. Vérifiez que des recettes sont disponibles."));
+      if (err instanceof VaultLockedError) { setVaultLocked(true); setGenError(err.message); }
+      else if (err instanceof Error && err.message.includes('Aucune recette')) {
+        setGenError('Impossible de générer le menu : aucune recette ne survit à vos exclusions, ou le catalogue est vide.');
+      } else {
+        setGenError(apiErrorMessage(err, "Impossible de générer le menu. Vérifiez que des recettes sont disponibles."));
+      }
     }
     setGenerating(false);
   }
 
   async function handleDeleteMenu() {
     if (!activeMenu || !confirm('Supprimer ce menu ?')) return;
-    try { await deleteMenu(activeMenu.id); setActiveMenu(null); } catch { /* ignore */ }
+    try { await deleteMenuBlob(weekKey); setActiveMenu(null); setMenuVersion(null); } catch { /* ignore */ }
   }
 
   function getSlot(day: DayOfWeekKey, meal: MealTypeKey) {
     return activeMenu?.slots.find((s) => s.day_of_week === day && s.meal_type === meal) ?? null;
   }
-  function toCreate(s: MenuSlotResponse): MenuSlotCreate {
-    return { day_of_week: s.day_of_week, meal_type: s.meal_type, recipe_id: s.recipe_id, nb_persons: s.nb_persons };
+
+  // Persiste un menu modifié dans le coffre (verrou optimiste via la version).
+  async function saveMenu(doc: MenuDocument): Promise<void> {
+    const version = await putMenuBlob(weekKey, doc, menuVersion ?? undefined);
+    setActiveMenu(doc); setMenuVersion(version);
   }
 
   async function handleSlotRemove(day: DayOfWeekKey, meal: MealTypeKey) {
     if (!activeMenu) return;
     setSaving(true);
     try {
-      const slots = activeMenu.slots.filter((s) => !(s.day_of_week === day && s.meal_type === meal)).map(toCreate);
-      setActiveMenu(await updateMenu(activeMenu.id, { slots }));
+      const slots = activeMenu.slots.filter((s) => !(s.day_of_week === day && s.meal_type === meal));
+      await saveMenu({ ...activeMenu, slots });
     } catch { /* ignore */ }
     setSaving(false);
   }
@@ -125,25 +152,23 @@ export default function AuroraSemaine() {
 
   async function handleSlotPersonsChange(day: DayOfWeekKey, meal: MealTypeKey, newPersons: number) {
     if (!activeMenu) return;
-    const slots: MenuSlotCreate[] = activeMenu.slots.map((s) =>
-      s.day_of_week === day && s.meal_type === meal
-        ? { ...toCreate(s), nb_persons: newPersons }
-        : toCreate(s),
+    const slots: MenuSlotDoc[] = activeMenu.slots.map((s) =>
+      s.day_of_week === day && s.meal_type === meal ? { ...s, nb_persons: newPersons } : s,
     );
-    const updated = await updateMenu(activeMenu.id, { slots });
-    setActiveMenu(updated);
-    setDetailSlot(updated.slots.find((s) => s.day_of_week === day && s.meal_type === meal) ?? null);
+    const doc = { ...activeMenu, slots };
+    await saveMenu(doc);
+    setDetailSlot(doc.slots.find((s) => s.day_of_week === day && s.meal_type === meal) ?? null);
   }
 
   async function handleSlotSave(recipeId: number) {
     if (!slotEdit || !activeMenu) return;
     setSaving(true);
     try {
-      const slots: MenuSlotCreate[] = [
-        ...activeMenu.slots.filter((s) => !(s.day_of_week === slotEdit.day && s.meal_type === slotEdit.meal)).map(toCreate),
+      const slots: MenuSlotDoc[] = [
+        ...activeMenu.slots.filter((s) => !(s.day_of_week === slotEdit.day && s.meal_type === slotEdit.meal)),
         { day_of_week: slotEdit.day, meal_type: slotEdit.meal, recipe_id: recipeId, nb_persons: activeMenu.nb_persons },
       ];
-      setActiveMenu(await updateMenu(activeMenu.id, { slots }));
+      await saveMenu({ ...activeMenu, slots });
       setSlotEdit(null);
     } catch { /* ignore */ }
     setSaving(false);
@@ -181,19 +206,20 @@ export default function AuroraSemaine() {
           </div>
           <div className="rost-toolbar-actions">
             {activeMenu && (
-              <button className="rost-btn" onClick={() => navigate(`/courses?menu=${activeMenu.id}`)}>🛒 Courses</button>
+              <button className="rost-btn" onClick={() => navigate(`/courses?week=${weekKey}`)}>🛒 Courses</button>
             )}
             {activeMenu && <button className="rost-btn rost-btn-ghost" onClick={handleDeleteMenu}>Supprimer</button>}
             <label className="rost-persons" title="Personnes par défaut">
               👥<input type="number" min={1} value={persons}
                 onChange={(e) => setPersons(Math.max(1, Number(e.target.value) || 1))} />
             </label>
-            <button className="rost-add-btn" onClick={handleGenerate} disabled={generating}>
+            <button className="rost-add-btn" onClick={handleGenerate} disabled={generating || vaultLocked}>
               {generating ? 'Génération…' : activeMenu ? '↺ Regénérer' : '+ Générer'}
             </button>
           </div>
         </div>
 
+        {vaultLocked && <p className="rost-error">🔒 Coffre verrouillé : tes menus sont chiffrés. Reconnecte-toi pour les afficher et en générer.</p>}
         {genError && <p className="rost-error">{genError}</p>}
 
         {loading ? (

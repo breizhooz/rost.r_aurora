@@ -14,10 +14,22 @@ const httpsDev =
     ? { cert: fs.readFileSync(certFile), key: fs.readFileSync(keyFile) }
     : undefined
 
+// On consomme @nutri/e2e-core depuis sa SOURCE (et non son dist/ pré-buildé) :
+// Vite/esbuild compile et fait du HMR sur les .ts directement → plus aucun
+// `npm run build` à relancer dans e2e-core après chaque modif. `server.fs.allow`
+// autorise la lecture hors du dossier projet (le repo voisin e2e-core).
+const e2eCoreSrc = fileURLToPath(new URL('../e2e-core/src/index.ts', import.meta.url))
+
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@nutri/e2e-core': e2eCoreSrc,
+    },
+  },
   server: {
     port: 5173,
     https: httpsDev,
+    fs: { allow: ['..'] },
   },
 })

@@ -10,6 +10,7 @@ const COURSE_TYPE_OPTIONS = [
   { value: 'enums.course_type.drink', label: 'Boisson' }, { value: 'enums.course_type.snack', label: 'Snack / Apéro' },
   { value: 'enums.course_type.side_dish', label: 'Accompagnement' }, { value: 'enums.course_type.breakfast', label: 'Petit-déjeuner' },
   { value: 'enums.course_type.soup', label: 'Soupe' }, { value: 'enums.course_type.salad', label: 'Salade' },
+  { value: 'enums.course_type.fruit', label: 'Fruit' },
 ];
 const UNIT_OPTIONS = ['g', 'kg', 'ml', 'cl', 'l', 'unité', 'càs', 'càc', 'pincée', 'tranche', 'gousse', 'sachet', 'botte', 'feuille'];
 

@@ -17,9 +17,12 @@ export default function Login() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    // Reprise d'un parcours interrompu par le login (ex : lien d'invitation) :
-    // une page peut déposer l'URL de retour dans sessionStorage avant de rediriger ici.
-    navigate(consumePostLoginRedirect() ?? '/dashboard', { replace: true });
+    // E2E : on ne va jamais directement à l'app. On passe par /vault (porte du
+    // coffre) qui demande la passphrase de chiffrement (ou la crée au 1er passage),
+    // puis redirige vers la cible. La cible reprend un parcours interrompu par le
+    // login (ex : lien d'invitation) déposé dans sessionStorage avant de rediriger ici.
+    const from = consumePostLoginRedirect() ?? '/dashboard';
+    navigate('/vault', { replace: true, state: { from } });
   }, [isAuthenticated, navigate]);
 
   // Reprise du flux 2FA initié via OAuth : le mfa_token est transmis par

@@ -1,12 +1,15 @@
 import { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { login as apiLogin, verifyMfa as apiVerifyMfa } from '../api/endpoints';
 import { useAuthContext } from '../context/AuthContext';
 import { apiErrorMessage } from '../utils/apiError';
 
+// E2E : le coffre n'est PAS déverrouillé ici. Le mot de passe de connexion ne
+// dérive plus la clé de chiffrement (modèle « passphrase de coffre séparée ») :
+// une fois la session établie, la page Login redirige vers /vault (cf. VaultGate),
+// qui demande la passphrase de chiffrement (ou la crée au 1er passage).
+
 export function useAuth() {
-  const navigate = useNavigate();
-  const { status, setSession, logout: ctxLogout } = useAuthContext();
+  const { status, setSession } = useAuthContext();
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState<string | null>(null);
   const [mfaRequired, setMfaRequired] = useState(false);
@@ -25,16 +28,16 @@ export function useAuth() {
         setMfaRequired(true);
       } else {
         // SEC-05 : le refresh est posé en cookie HttpOnly par le backend ;
-        // on ne garde que l'access token en mémoire.
+        // on ne garde que l'access token en mémoire. La redirection (→ /vault)
+        // est portée par l'effet `isAuthenticated` de la page Login.
         setSession(result.access_token);
-        navigate('/dashboard');
       }
     } catch (err: unknown) {
       setError(apiErrorMessage(err, 'Identifiants incorrects'));
     } finally {
       setLoading(false);
     }
-  }, [navigate, setSession]);
+  }, [setSession]);
 
   const verifyMfa = useCallback(async (code: string) => {
     if (!mfaToken) return;
@@ -44,13 +47,13 @@ export function useAuth() {
       setSession(tokens.access_token);
       setMfaRequired(false);
       setMfaToken(null);
-      navigate('/dashboard');
+      // Redirection (→ /vault) portée par l'effet `isAuthenticated` de Login.
     } catch (err: unknown) {
       setError(apiErrorMessage(err, 'Code invalide'));
     } finally {
       setLoading(false);
     }
-  }, [mfaToken, navigate, setSession]);
+  }, [mfaToken, setSession]);
 
   const startMfa = useCallback((token: string, method: string = 'totp') => {
     setMfaToken(token);
@@ -65,10 +68,5 @@ export function useAuth() {
     setError(null);
   }, []);
 
-  const logout = useCallback(async () => {
-    await ctxLogout();
-    navigate('/login');
-  }, [ctxLogout, navigate]);
-
-  return { isAuthenticated, login, logout, loading, error, mfaRequired, mfaMethod, verifyMfa, startMfa, resetMfa };
+  return { isAuthenticated, login, loading, error, mfaRequired, mfaMethod, verifyMfa, startMfa, resetMfa };
 }

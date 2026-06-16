@@ -22,7 +22,7 @@ export default function Confidentialite() {
 
         <section style={{ marginTop: 24, lineHeight: 1.6 }}>
           <p>
-            La présente politique décrit comment NutriPlanner traite vos données personnelles,
+            La présente politique décrit comment Rost.r traite vos données personnelles,
             conformément au Règlement (UE) 2016/679 (RGPD). Elle s’applique en particulier aux
             <strong> données de santé</strong>, qui sont des données sensibles au sens de l’article 9.
           </p>
