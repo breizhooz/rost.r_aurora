@@ -1,0 +1,85 @@
+name: rost.r_aurora CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Typecheck · Build
+    runs-on: ubuntu-latest
+    steps:
+      # Aurora et son noyau crypto e2e-core vivent dans deux dépôts distincts,
+      # liés en dev par `file:../e2e-core`. On reconstitue ce voisinage en CI :
+      # les deux checkouts sont des sous-dossiers frères du workspace, donc
+      # `file:../e2e-core` (relatif à rost.r_aurora/) résout vers ../e2e-core.
+      - name: Checkout rost.r_aurora
+        uses: actions/checkout@v4
+        with:
+          path: rost.r_aurora
+
+      # Développement en branches coordonnées de même nom sur les 3 repos :
+      # on consomme la branche e2e-core homonyme si elle existe (ex. une feature
+      # qui ajoute des exports), sinon on retombe sur `main`. Ça évite d'imposer
+      # un ordre de merge (e2e-core avant Aurora) entre les deux dépôts.
+      - name: Résout la ref e2e-core (branche homonyme sinon main)
+        id: e2eref
+        run: |
+          BR="${{ github.head_ref || github.ref_name }}"
+          URL="https://x-access-token:${{ secrets.E2E_CORE_TOKEN }}@github.com/breizhooz/e2e-core.git"
+          if [ -n "$BR" ] && git ls-remote --exit-code --heads "$URL" "$BR" >/dev/null 2>&1; then
+            echo "ref=$BR" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+          echo "e2e-core ref = $(tail -n1 "$GITHUB_OUTPUT")"
+
+      # e2e-core est privé : le checkout nécessite un PAT en secret repo
+      # (Settings → Secrets and variables → Actions → New repository secret),
+      # nommé E2E_CORE_TOKEN, avec accès lecture au contenu de breizhooz/e2e-core.
+      - name: Checkout e2e-core (dépendance privée)
+        uses: actions/checkout@v4
+        with:
+          repository: breizhooz/e2e-core
+          ref: ${{ steps.e2eref.outputs.ref }}
+          token: ${{ secrets.E2E_CORE_TOKEN }}
+          path: e2e-core
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            e2e-core/package-lock.json
+            rost.r_aurora/package-lock.json
+
+      # dist/ d'e2e-core est gitignoré : il faut le builder pour que les types
+      # (dist/index.d.ts) et le runtime (dist/index.js) soient résolvables par
+      # le typecheck et le bundling d'Aurora.
+      - name: Build e2e-core
+        working-directory: e2e-core
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install Aurora (npm ci)
+        working-directory: rost.r_aurora
+        run: npm ci
+
+      - name: Typecheck (tsc --noEmit)
+        working-directory: rost.r_aurora
+        run: npx tsc --noEmit
+
+      - name: Build (vite)
+        working-directory: rost.r_aurora
+        run: npm run build
