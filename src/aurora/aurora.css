@@ -1427,6 +1427,11 @@ button.rost-rating-star:hover { transform: scale(1.08); }
 .rost-auth-links { display: flex; flex-direction: column; gap: 8px; align-items: center; margin-top: 6px; font-size: 13px; color: var(--dim); }
 .rost-auth-links a { color: var(--rost-accent); text-decoration: none; }
 .rost-auth-links a:hover { text-decoration: underline; }
+/* Liens inline dans le corps des écrans auth (ex. « Politique de confidentialité »
+   sur l'écran de consentement) : couleur accent (lisible en clair ET en sombre)
+   au lieu du bleu navigateur, à très faible contraste sur fond sombre. */
+.rost-auth-sub a { color: var(--rost-accent); text-decoration: underline; }
+.rost-auth-sub a:hover { color: var(--rost-accent-deep); }
 
 /* ── Inscription (wizard) en thème Aurora ── */
 .rost-reg-card { max-width: 500px; max-height: calc(100dvh - 48px); overflow-y: auto; }
