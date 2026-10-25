@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getMe, listAllRecipes } from '../api/endpoints';
-import { getHealthDoc, deriveNutrition } from '../api/healthVault';
-import { listMenuWeeks, getMenuBlob } from '../api/menuVault';
-import { isVaultUnlocked } from '../crypto/vault';
+import { getMe, getMenus, listAllRecipes } from '../api/endpoints';
+import { getCalculations, getMyProfile, getSportsProfile } from '../api/healthDoc';
 import { useRefreshSignal } from '../utils/liveRefresh';
 import type { UserOut, RecipeResponse, DayOfWeekKey, MealTypeKey } from '../types';
 
-// ── Formes minimales consommées par buildViewModel (E2E : dérivées du document
-// santé déchiffré + des blobs menu, plus des réponses serveur). ──────────────
+// ── Formes minimales consommées par buildViewModel (données corporelles lues sur
+// l'appareil, menus et recettes renvoyés par le serveur). ────────────────────
 interface SlotLike { day_of_week: DayOfWeekKey; meal_type: MealTypeKey; recipe_id: number; }
 interface MenuLike { start_date: string; slots: SlotLike[]; }
 interface CalcLike {
@@ -15,7 +13,7 @@ interface CalcLike {
   macros: { proteins_g: number; carbs_g: number; fats_g: number; tdee_kcal: number } | null;
 }
 interface ProfileLike { weight_kg: number | null; target_weight_kg: number | null; }
-interface SportsLike { resting_heart_rate_bpm: number | null; sessions_per_week: number | null; }
+interface SportsLike { sessions_per_week: number | null; }
 
 /** Nombre de semaines de menus chargées pour le dashboard (journal/graphe). */
 const DASHBOARD_WEEKS = 6;
@@ -93,7 +91,6 @@ export interface AuroraStreak {
   bigUnit: string;
   weight: number | null;
   targetWeight: number | null;
-  restingHr: number | null;
   sessions: number | null;
 }
 
@@ -292,7 +289,6 @@ function buildViewModel(
     bigUnit: 'kg · poids actuel',
     weight: profile?.weight_kg ?? null,
     targetWeight: profile?.target_weight_kg ?? null,
-    restingHr: sports?.resting_heart_rate_bpm ?? null,
     sessions: sports?.sessions_per_week ?? null,
   };
 
@@ -332,46 +328,34 @@ export function useAuroraData() {
           listAllRecipes().catch(() => [] as RecipeResponse[]),
         ]);
 
-        // Santé + menus = données chiffrées (E2E). Sans coffre déverrouillé, on
-        // rend un dashboard « vide » (profil/objectif/menus indisponibles) plutôt
-        // qu'une erreur. Le calcul métabolique est dérivé localement du document.
-        let profile: ProfileLike | null = null;
-        let sports: SportsLike | null = null;
-        let calc: CalcLike | null = null;
-        let menus: MenuLike[] = [];
-
-        if (isVaultUnlocked()) {
-          const stored = await getHealthDoc().catch(() => null);
-          const doc = stored?.doc ?? null;
-          if (doc) {
-            profile = doc.profile
-              ? { weight_kg: doc.profile.weight_kg, target_weight_kg: doc.profile.target_weight_kg }
-              : null;
-            sports = doc.sports
-              ? {
-                  resting_heart_rate_bpm: doc.sports.resting_heart_rate_bpm,
-                  sessions_per_week: doc.sports.sessions_per_week,
-                }
-              : null;
-            const nutri = deriveNutrition(doc);
-            if (nutri) {
-              calc = {
-                tdee_kcal: nutri.tdeeKcal,
-                macros: nutri.macros
-                  ? {
-                      proteins_g: nutri.macros.proteinsG,
-                      carbs_g: nutri.macros.carbsG,
-                      fats_g: nutri.macros.fatsG,
-                      tdee_kcal: nutri.targetCaloriesKcal ?? nutri.tdeeKcal,
-                    }
-                  : null,
-              };
+        // Corps et activité restent sur l'appareil (calcul métabolique local) ;
+        // les menus viennent du serveur. Sans profil saisi : dashboard « vide ».
+        const [p, sp, c, allMenus] = await Promise.all([
+          getMyProfile().catch(() => null),
+          getSportsProfile().catch(() => null),
+          getCalculations().catch(() => null),
+          getMenus(),
+        ]);
+        const profile: ProfileLike | null = p
+          ? { weight_kg: p.weight_kg ?? null, target_weight_kg: p.target_weight_kg ?? null }
+          : null;
+        const sports: SportsLike | null = sp ? { sessions_per_week: sp.sessions_per_week ?? null } : null;
+        const calc: CalcLike | null = c
+          ? {
+              tdee_kcal: c.tdee_kcal,
+              macros: c.macros
+                ? {
+                    proteins_g: c.macros.proteins_g,
+                    carbs_g: c.macros.carbs_g,
+                    fats_g: c.macros.fats_g,
+                    tdee_kcal: c.macros.tdee_kcal,
+                  }
+                : null,
             }
-          }
-          const weeks = (await listMenuWeeks().catch(() => [])).slice(0, DASHBOARD_WEEKS);
-          const loaded = await Promise.all(weeks.map((w) => getMenuBlob(w).catch(() => null)));
-          menus = loaded.flatMap((s) => (s ? [s.doc] : []));
-        }
+          : null;
+        const menus: MenuLike[] = [...allMenus]
+          .sort((a, b) => (a.start_date < b.start_date ? 1 : a.start_date > b.start_date ? -1 : 0))
+          .slice(0, DASHBOARD_WEEKS);
 
         if (cancelled) return;
         const menu = pickCurrentMenu(menus);

@@ -4,7 +4,7 @@ import { refreshAccessToken } from '../api/client';
 import { clearAccessToken, setAccessToken } from '../api/tokenStore';
 import { clearStoredAccountId } from '../utils/activeAccount';
 import { clearCurrentUserCache } from '../hooks/useCurrentUser';
-import { clearUserKey } from '../crypto/vault';
+import { resetHealthDocCache } from '../api/healthDoc';
 
 const USERS_BASE = 'https://api-users.localhost';
 
@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearAccessToken();
     clearStoredAccountId();
     clearCurrentUserCache();
-    clearUserKey();
+    resetHealthDocCache();
     setStatus('anonymous');
   }, []);
 

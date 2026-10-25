@@ -25,8 +25,7 @@ export default function OAuthCallback() {
 
     if (mfaToken) {
       // 2FA active : on reprend le formulaire de vérification de la page Login.
-      // Après le 2FA, l'effet `isAuthenticated` de Login redirige vers /vault, qui
-      // demande la passphrase de chiffrement → coffre déverrouillé.
+      // Après le 2FA, l'effet `isAuthenticated` de Login redirige vers la cible.
       navigate('/login', {
         replace: true,
         state: { mfaToken, mfaMethod: mfaMethod ?? 'totp' },
@@ -46,11 +45,8 @@ export default function OAuthCallback() {
       bootstrapOAuthSession(bootstrap)
         .then((token) => {
           setSession(token);
-          // OAuth authentifie mais ne fournit pas la passphrase de chiffrement →
-          // on passe par /vault, qui demande/crée la passphrase puis file vers la
-          // cible finale (reprend un parcours en attente, ex. lien d'invitation).
-          const target = consumePostLoginRedirect() ?? '/dashboard';
-          navigate('/vault', { replace: true, state: { from: target } });
+          // Reprend un parcours en attente (ex. lien d'invitation).
+          navigate(consumePostLoginRedirect() ?? '/dashboard', { replace: true });
         })
         .catch(() => {
           setError("Échec de l'authentification. Veuillez réessayer.");

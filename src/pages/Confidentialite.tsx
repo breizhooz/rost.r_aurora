@@ -5,8 +5,8 @@ import '../aurora/aurora.css';
 // Politique de confidentialité (RGPD). Version alignée avec HEALTH_CONSENT_VERSION
 // (api/endpoints.ts) : toute évolution substantielle du traitement doit incrémenter
 // les DEUX (la version du consentement santé recueilli référence cette politique).
-const POLICY_VERSION = 'v1';
-const LAST_UPDATED = '14 juin 2026';
+const POLICY_VERSION = 'v2';
+const LAST_UPDATED = '25 octobre 2026';
 
 export default function Confidentialite() {
   return (
@@ -23,8 +23,9 @@ export default function Confidentialite() {
         <section style={{ marginTop: 24, lineHeight: 1.6 }}>
           <p>
             La présente politique décrit comment Rost.r traite vos données personnelles,
-            conformément au Règlement (UE) 2016/679 (RGPD). Elle s’applique en particulier aux
-            <strong> données de santé</strong>, qui sont des données sensibles au sens de l’article 9.
+            conformément au Règlement (UE) 2016/679 (RGPD). Rost.r ne collecte <strong>aucune
+            donnée médicale</strong> ; votre objectif et vos cibles nutritionnelles, susceptibles de
+            révéler des informations liées à la santé (article 9), sont traités avec votre consentement.
           </p>
 
           <h2>1. Responsable du traitement</h2>
@@ -38,10 +39,14 @@ export default function Confidentialite() {
           <ul>
             <li><strong>Identité &amp; compte</strong> : email, mot de passe (haché), comptes liés
               (OAuth), rôles. <em>Base légale : exécution du contrat (art. 6.1.b).</em></li>
-            <li><strong>Profil &amp; données de santé (art. 9)</strong> : date de naissance, sexe,
-              poids et objectifs, composition corporelle, mensurations, blessures, conditions
-              médicales, médicaments, allergies, métriques de performance, mode de vie,
-              contre-indications médicales. <em>Base légale : votre consentement explicite (art. 9.2.a).</em></li>
+            <li><strong>Profil nutritionnel (art. 9)</strong> : objectif (perte de poids, maintien…),
+              régime, préférences de repas et de cuisine, aliments exclus (allergènes compris, sans
+              motif ni gravité) et cibles journalières (calories, macronutriments).
+              <em> Base légale : votre consentement explicite (art. 9.2.a).</em></li>
+            <li><strong>Données physiques — sur votre appareil uniquement</strong> : date de naissance,
+              sexe, taille, poids et volume d’activité sont enregistrés dans votre navigateur et ne
+              nous sont <strong>jamais transmis</strong>. Les cibles en sont déduites localement ;
+              seul ce résultat est envoyé.</li>
             <li><strong>Menus &amp; nutrition</strong> : menus générés à partir de votre profil,
               préférences, listes de courses. <em>Base légale : exécution du contrat (art. 6.1.b).</em></li>
             <li><strong>Notifications</strong> : messages et abonnements aux notifications.
@@ -51,24 +56,26 @@ export default function Confidentialite() {
               légale (art. 6.1.f / 6.1.c).</em></li>
           </ul>
 
-          <h2>3. Consentement aux données de santé</h2>
+          <h2>3. Consentement</h2>
           <p>
-            Le traitement de vos données de santé repose sur votre <strong>consentement explicite</strong>.
+            L’enregistrement de votre profil nutritionnel repose sur votre <strong>consentement explicite</strong>.
             Vous pouvez le donner ou le retirer à tout moment depuis votre espace
-            <em> Profil → Confidentialité</em>. Sans consentement actif, vous ne pouvez pas ajouter
-            ni modifier de données de santé ; les données déjà enregistrées restent accessibles,
+            <em> Profil → Confidentialité</em>. Sans consentement actif, vous ne pouvez pas modifier
+            votre profil nutritionnel ; les données déjà enregistrées restent accessibles,
             exportables et supprimables. Le retrait du consentement n’a pas d’effet rétroactif sur
             les traitements déjà réalisés.
           </p>
 
           <h2>4. Durées de conservation</h2>
           <ul>
-            <li><strong>Profil &amp; données de santé</strong> : tant que le compte est actif ;
+            <li><strong>Profil nutritionnel</strong> : tant que le compte est actif ;
               suppression à la fermeture du compte, ou après <strong>24 mois d’inactivité</strong>.</li>
             <li><strong>Menus</strong> : tant que le compte est actif ; rotation au-delà de 12 mois.</li>
             <li><strong>Notifications</strong> : <strong>12 mois</strong>.</li>
             <li><strong>Journaux d’audit</strong> : <strong>3 ans</strong> (preuve et sécurité).</li>
             <li><strong>Jetons &amp; codes temporaires</strong> : purgés dès leur expiration.</li>
+            <li><strong>Données physiques</strong> : conservées par votre navigateur ; vous les
+              effacez en vidant les données du site.</li>
             <li><strong>Invitations expirées/révoquées</strong> : 90 jours.</li>
           </ul>
 
@@ -95,9 +102,8 @@ export default function Confidentialite() {
 
           <h2>7. Sécurité</h2>
           <p>
-            Les mots de passe sont hachés (Argon2), les jetons sensibles chiffrés, et les champs de
-            santé libres sont chiffrés au repos. Les accès sont journalisés et les journaux
-            expurgés des données sensibles.
+            Les mots de passe sont hachés (Argon2) et les jetons sensibles chiffrés. Les accès sont
+            journalisés et les journaux expurgés des données sensibles.
           </p>
 
           <h2>8. Réclamation</h2>

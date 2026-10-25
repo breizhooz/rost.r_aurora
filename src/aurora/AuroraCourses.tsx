@@ -1,15 +1,12 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AuroraShell from './AuroraShell';
-import { getMe, listAllRecipes } from '../api/endpoints';
-import { listMenuWeeks, getMenuBlob, VaultLockedError } from '../api/menuVault';
-import { isVaultUnlocked } from '../crypto/vault';
+import { getMe, getMenus, getShoppingList } from '../api/endpoints';
 import { exportShoppingCsv, exportShoppingPdf } from '../utils/shoppingExport';
-import { buildShoppingList, type ShoppingItem, type Recipe } from '@nutri/e2e-core';
-import type { UserOut } from '../types';
+import type { ShoppingItem, ShoppingList, UserOut } from '../types';
 
-/** Liste de courses calculée client (le menu n'existe que déchiffré). */
-interface ShoppingView { start_date: string; nb_persons: number; items: ShoppingItem[]; }
+/** Semaine ayant un menu : date du lundi → id du menu serveur. */
+interface MenuWeek { start_date: string; id: number; }
 
 const CATEGORY_META: Record<string, { label: string; icon: string }> = {
   'enums.type_of_ingredient.vegetable': { label: 'Légumes', icon: '🥦' },
@@ -74,52 +71,36 @@ export default function AuroraCourses() {
   const [searchParams] = useSearchParams();
   const weekParam = searchParams.get('week');
   const [user, setUser] = useState<UserOut | null>(null);
-  const [weeks, setWeeks] = useState<string[]>([]);
+  const [weeks, setWeeks] = useState<MenuWeek[]>([]);
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
-  const [list, setList] = useState<ShoppingView | null>(null);
+  const [list, setList] = useState<ShoppingList | null>(null);
   const [loadingMenus, setLoadingMenus] = useState(true);
   const [loadingList, setLoadingList] = useState(false);
-  const [vaultLocked, setVaultLocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeCat, setActiveCat] = useState<string>(ALL_TAB);
 
-  // Catalogue public (id → recette) pour résoudre les ingrédients localement.
-  const recipesById = useRef<Map<number, Recipe>>(new Map());
-
   useEffect(() => { getMe().then(setUser).catch(() => {}); }, []);
   useEffect(() => {
-    if (!isVaultUnlocked()) { setVaultLocked(true); setLoadingMenus(false); return; }
-    Promise.all([
-      listMenuWeeks(),
-      listAllRecipes().then((items) => {
-        recipesById.current = new Map(items.map((r) => [r.id, r as unknown as Recipe]));
-      }),
-    ])
-      .then(([ws]) => {
+    getMenus()
+      .then((menus) => {
+        const ws = menus
+          .map((m) => ({ start_date: m.start_date, id: m.id }))
+          .sort((a, b) => (a.start_date < b.start_date ? 1 : a.start_date > b.start_date ? -1 : 0));
         setWeeks(ws);
-        setSelectedWeek(weekParam && ws.includes(weekParam) ? weekParam : ws[0] ?? null);
+        setSelectedWeek(weekParam && ws.some((w) => w.start_date === weekParam) ? weekParam : ws[0]?.start_date ?? null);
       })
       .catch(() => setError('Impossible de charger les menus.'))
       .finally(() => setLoadingMenus(false));
   }, [weekParam]);
   useEffect(() => {
-    if (selectedWeek === null) { setList(null); return; }
+    const menuId = weeks.find((w) => w.start_date === selectedWeek)?.id;
+    if (menuId === undefined) { setList(null); return; }
     setLoadingList(true); setError(null);
-    getMenuBlob(selectedWeek)
-      .then((stored) => {
-        if (!stored) { setList(null); return; }
-        setList({
-          start_date: stored.doc.start_date,
-          nb_persons: stored.doc.nb_persons,
-          items: buildShoppingList(stored.doc.slots, recipesById.current),
-        });
-      })
-      .catch((err) => {
-        if (err instanceof VaultLockedError) setVaultLocked(true);
-        setError('Impossible de charger la liste de courses.');
-      })
+    getShoppingList(menuId)
+      .then(setList)
+      .catch(() => setError('Impossible de charger la liste de courses.'))
       .finally(() => setLoadingList(false));
-  }, [selectedWeek]);
+  }, [selectedWeek, weeks]);
 
   const handleExport = useCallback((format: 'csv' | 'pdf') => {
     if (!list) return;
@@ -143,7 +124,7 @@ export default function AuroraCourses() {
         <div className="rost-toolbar">
           {!loadingMenus && weeks.length > 0 && (
             <select className="rost-select" value={selectedWeek ?? ''} onChange={(e) => setSelectedWeek(e.target.value)}>
-              {weeks.map((w) => <option key={w} value={w}>{weekLabel(w)}</option>)}
+              {weeks.map((w) => <option key={w.id} value={w.start_date}>{weekLabel(w.start_date)}</option>)}
             </select>
           )}
           <div className="rost-toolbar-actions">
@@ -158,9 +139,7 @@ export default function AuroraCourses() {
 
         {error && <p className="rost-error">{error}</p>}
 
-        {vaultLocked ? (
-          <div className="rost-empty rost-empty-block">🔒 Coffre verrouillé — reconnecte-toi pour accéder à ta liste de courses chiffrée.</div>
-        ) : loadingMenus || loadingList ? (
+        {loadingMenus || loadingList ? (
           <div className="rost-skel" style={{ height: 320 }} />
         ) : weeks.length === 0 ? (
           <div className="rost-empty rost-empty-block">Aucun menu — génère un menu hebdo depuis la page Semaine.</div>

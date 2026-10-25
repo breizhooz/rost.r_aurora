@@ -3,7 +3,6 @@ import Login           from './pages/Login'
 import Register        from './pages/Register'
 import ForgotPassword  from './pages/ForgotPassword'
 import OAuthCallback   from './pages/OAuthCallback'
-import VaultGate       from './pages/VaultGate'
 import AcceptInvite    from './pages/AcceptInvite'
 import Confidentialite from './pages/Confidentialite'
 import AuroraDashboard from './aurora/AuroraDashboard'
@@ -30,7 +29,8 @@ export default function App() {
         <Route path="/register"         element={<Register />} />
         <Route path="/forgot-password"  element={<ForgotPassword />} />
         <Route path="/oauth/callback"   element={<OAuthCallback />} />
-        <Route path="/vault"            element={<VaultGate />} />
+        {/* Ancienne porte du coffre chiffré (supprimé) : liens/favoris conservés. */}
+        <Route path="/vault"            element={<Navigate to="/dashboard" replace />} />
         <Route path="/accept-invite"    element={<AcceptInvite />} />
         <Route path="/confidentialite"  element={<Confidentialite />} />
         {/* ── Aurora = interface principale (racine) ── */}

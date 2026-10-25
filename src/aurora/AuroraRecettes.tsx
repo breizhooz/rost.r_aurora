@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import AuroraShell from './AuroraShell';
 import { getMe, searchRecipesPage } from '../api/endpoints';
-import { getNutritionPreferences } from '../api/healthDoc'; // préférences depuis le coffre chiffré (E2E)
+import { getNutritionPreferences } from '../api/healthDoc';
 import type { SearchRecipeResult, SearchResponse, UserOut } from '../types';
 import { COURSE_TYPE_LABELS, courseTypeLabel } from '../utils/enumLabels';
 import { useRefreshSignal } from '../utils/liveRefresh';
@@ -12,9 +12,8 @@ import AuroraScanModal from './AuroraScanModal';
 
 const COURSE_TYPES = Object.keys(COURSE_TYPE_LABELS);
 const PAGE_SIZE = 20;
-const INTENSITIES: [string, number][] = [['Doux', 0.5], ['Modéré', 1.0], ['Intense', 1.5]];
 
-interface Adjust { aggressiveness: number; varietyPct: number; overrideCalories?: number; overrideProteines?: number; }
+interface Adjust { varietyPct: number; overrideCalories?: number; overrideProteines?: number; }
 
 function initials(email: string) {
   const parts = email.split('@')[0].split(/[._-]/);
@@ -36,18 +35,16 @@ export default function AuroraRecettes() {
   const [showCreate, setShowCreate] = useState(false);
   const [showScan, setShowScan] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [aggressiveness, setAggressiveness] = useState(1.0);
   const [varietyPct, setVarietyPct] = useState(0.10);
   const [overrideCalories, setOverrideCalories] = useState('');
   const [overrideProteines, setOverrideProteines] = useState('');
   const abortRef = useRef<AbortController | null>(null);
 
   const adjust = useMemo<Adjust>(() => ({
-    aggressiveness,
     varietyPct,
     overrideCalories: overrideCalories ? Number(overrideCalories) : undefined,
     overrideProteines: overrideProteines ? Number(overrideProteines) : undefined,
-  }), [aggressiveness, varietyPct, overrideCalories, overrideProteines]);
+  }), [varietyPct, overrideCalories, overrideProteines]);
 
   useEffect(() => { getMe().then(setUser).catch(() => {}); }, []);
 
@@ -55,7 +52,6 @@ export default function AuroraRecettes() {
   useEffect(() => {
     getNutritionPreferences().then((np) => {
       if (!np) return;
-      setAggressiveness(np.rules_aggressiveness);
       setVarietyPct(np.rules_variety_pct);
       if (np.rules_override_calories != null) setOverrideCalories(String(np.rules_override_calories));
       if (np.rules_override_proteines != null) setOverrideProteines(String(np.rules_override_proteines));
@@ -76,7 +72,7 @@ export default function AuroraRecettes() {
     try {
       const res = await searchRecipesPage({
         q: query, courseType: ct ?? undefined, limit: PAGE_SIZE, offset: off,
-        aggressiveness: adj.aggressiveness, varietyPct: adj.varietyPct,
+        varietyPct: adj.varietyPct,
         overrideCalories: adj.overrideCalories, overrideProteines: adj.overrideProteines,
       });
       if (!ctrl.signal.aborted) setResult(res);
@@ -148,16 +144,6 @@ export default function AuroraRecettes() {
             </button>
             {panelOpen && (
               <div className="rost-adjust-body">
-                <div className="rost-adjust-row">
-                  <span className="rost-adjust-label">Intensité</span>
-                  <div className="rost-seg">
-                    {INTENSITIES.map(([lbl, val]) => (
-                      <button key={val} type="button"
-                        className={`rost-seg-btn ${aggressiveness === val ? 'is-active' : ''}`}
-                        onClick={() => { setAggressiveness(val); setOffset(0); }}>{lbl}</button>
-                    ))}
-                  </div>
-                </div>
                 <div className="rost-adjust-row">
                   <span className="rost-adjust-label">Variété · ±{Math.round(varietyPct * 100)}%</span>
                   <input type="range" min={5} max={30} step={1} className="rost-adjust-slider"

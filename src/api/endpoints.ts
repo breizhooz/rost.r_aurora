@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { usersClient, profileClient, recipeClient, menuClient, crawlerClient, notificationClient, refreshAccessToken } from './client';
+import { usersClient, recipeClient, menuClient, crawlerClient, notificationClient, refreshAccessToken } from './client';
 import type {
   TokenResponse,
   AccountSummary,
@@ -23,7 +23,6 @@ import type {
   AdminUser,
   UserRightsUpdate,
   RecipeCountsByUser,
-  ProfileResponse,
   WeeklyMenuResponse,
   WeeklyMenuCreate,
   ServiceHealth,
@@ -34,18 +33,6 @@ import type {
   OneshotResponse,
   NotificationItem,
   InstagramSessionInfo,
-  CalculationResponse,
-  SportsProfileResponse,
-  LifestyleProfileResponse,
-  NutritionPreferencesResponse,
-  BodyCompositionResponse,
-  BodyMeasurementsResponse,
-  PerformanceMetricResponse,
-  InjuryResponse,
-  FoodAllergyResponse,
-  ExcludedFoodResponse,
-  MedicalConditionResponse,
-  MedicationResponse,
   CrawlSourceResponse,
   CrawlResultResponse,
   PaginatedCrawlResultResponse,
@@ -128,7 +115,7 @@ export async function getMe(): Promise<UserOut> {
 /** Type de consentement « données de santé » (le seul exploité par l'UI à ce jour). */
 export const HEALTH_CONSENT_TYPE = 'health_data';
 /** Version du consentement santé = version de la politique de confidentialité associée. */
-export const HEALTH_CONSENT_VERSION = 'v1';
+export const HEALTH_CONSENT_VERSION = 'v2';
 
 /** État courant des consentements (dernière trace par type, append-only côté backend). */
 export async function getConsents(): Promise<ConsentResponse[]> {
@@ -343,15 +330,6 @@ export async function adminDeleteUser(userId: string): Promise<void> {
   await usersClient.delete(`/api/v1/users/${userId}`);
 }
 
-export async function getMyProfile(): Promise<ProfileResponse | null> {
-  try {
-    const { data } = await profileClient.get<ProfileResponse>('/api/v1/profiles/me');
-    return data;
-  } catch {
-    return null;
-  }
-}
-
 export async function getRecipeBySlug(slug: string): Promise<RecipeResponse> {
   const { data } = await recipeClient.get<RecipeResponse>(`/api/v1/recipe/${slug}`);
   return data;
@@ -462,7 +440,6 @@ export async function searchRecipesPage(opts: {
   courseType?: string;
   limit?: number;
   offset?: number;
-  aggressiveness?: number;
   varietyPct?: number;
   overrideCalories?: number;
   overrideProteines?: number;
@@ -470,199 +447,11 @@ export async function searchRecipesPage(opts: {
   const params: Record<string, unknown> = { limit: opts.limit ?? 20, offset: opts.offset ?? 0 };
   if (opts.q?.trim()) params.q = opts.q.trim();
   if (opts.courseType) params.course_type = opts.courseType;
-  if (opts.aggressiveness != null) params.aggressiveness = opts.aggressiveness;
   if (opts.varietyPct != null) params.variety_pct = opts.varietyPct;
   if (opts.overrideCalories != null) params.override_calories = opts.overrideCalories;
   if (opts.overrideProteines != null) params.override_proteines = opts.overrideProteines;
   const { data } = await recipeClient.get<SearchResponse>('/api/v1/search/recipes', { params });
   return data;
-}
-
-// ── Profile sub-resources ────────────────────────────────
-async function safeGet<T>(fn: () => Promise<T>): Promise<T | null> {
-  try { return await fn(); } catch { return null; }
-}
-
-async function safeGetList<T>(fn: () => Promise<T[]>): Promise<T[]> {
-  try { return await fn() ?? []; } catch { return []; }
-}
-
-export async function getCalculations(): Promise<CalculationResponse | null> {
-  return safeGet(async () => {
-    const { data } = await profileClient.get<CalculationResponse>('/api/v1/profiles/me/calculate');
-    return data;
-  });
-}
-
-export async function getSportsProfile(): Promise<SportsProfileResponse | null> {
-  return safeGet(async () => {
-    const { data } = await profileClient.get<SportsProfileResponse>('/api/v1/profiles/me/sports');
-    return data;
-  });
-}
-
-export async function getLifestyle(): Promise<LifestyleProfileResponse | null> {
-  return safeGet(async () => {
-    const { data } = await profileClient.get<LifestyleProfileResponse>('/api/v1/profiles/me/lifestyle');
-    return data;
-  });
-}
-
-export async function getNutritionPreferences(): Promise<NutritionPreferencesResponse | null> {
-  return safeGet(async () => {
-    const { data } = await profileClient.get<NutritionPreferencesResponse>('/api/v1/profiles/me/nutrition');
-    return data;
-  });
-}
-
-export async function getBodyComposition(): Promise<BodyCompositionResponse[]> {
-  return safeGetList(async () => {
-    const { data } = await profileClient.get<BodyCompositionResponse[]>('/api/v1/profiles/me/composition');
-    return data;
-  });
-}
-
-export async function getBodyMeasurements(): Promise<BodyMeasurementsResponse[]> {
-  return safeGetList(async () => {
-    const { data } = await profileClient.get<BodyMeasurementsResponse[]>('/api/v1/profiles/me/measurements');
-    return data;
-  });
-}
-
-export async function getPerformanceMetrics(): Promise<PerformanceMetricResponse[]> {
-  return safeGetList(async () => {
-    const { data } = await profileClient.get<PerformanceMetricResponse[]>('/api/v1/profiles/me/performance');
-    return data;
-  });
-}
-
-export async function getInjuries(): Promise<InjuryResponse[]> {
-  return safeGetList(async () => {
-    const { data } = await profileClient.get<InjuryResponse[]>('/api/v1/profiles/me/injuries');
-    return data;
-  });
-}
-
-export async function getAllergies(): Promise<FoodAllergyResponse[]> {
-  return safeGetList(async () => {
-    const { data } = await profileClient.get<FoodAllergyResponse[]>('/api/v1/profiles/me/allergies');
-    return data;
-  });
-}
-
-export async function getExcludedFoods(): Promise<ExcludedFoodResponse[]> {
-  return safeGetList(async () => {
-    const { data } = await profileClient.get<ExcludedFoodResponse[]>('/api/v1/profiles/me/excluded-foods');
-    return data;
-  });
-}
-
-export async function getConditions(): Promise<MedicalConditionResponse[]> {
-  return safeGetList(async () => {
-    const { data } = await profileClient.get<MedicalConditionResponse[]>('/api/v1/profiles/me/conditions');
-    return data;
-  });
-}
-
-export async function getMedications(): Promise<MedicationResponse[]> {
-  return safeGetList(async () => {
-    const { data } = await profileClient.get<MedicationResponse[]>('/api/v1/profiles/me/medications');
-    return data;
-  });
-}
-
-// ── Profile create / upsert ──────────────────────────────
-export async function createProfile(body: Record<string, unknown>): Promise<ProfileResponse> {
-  const { data } = await profileClient.post<ProfileResponse>('/api/v1/profiles', body);
-  return data;
-}
-
-export async function updateProfile(body: Record<string, unknown>): Promise<ProfileResponse> {
-  const { data } = await profileClient.patch<ProfileResponse>('/api/v1/profiles/me', body);
-  return data;
-}
-
-export async function addBodyComposition(body: Record<string, unknown>): Promise<BodyCompositionResponse> {
-  const { data } = await profileClient.post<BodyCompositionResponse>('/api/v1/profiles/me/composition', body);
-  return data;
-}
-
-export async function deleteBodyComposition(slug: string): Promise<void> {
-  await profileClient.delete(`/api/v1/profiles/me/composition/${slug}`);
-}
-
-export async function addBodyMeasurements(body: Record<string, unknown>): Promise<BodyMeasurementsResponse> {
-  const { data } = await profileClient.post<BodyMeasurementsResponse>('/api/v1/profiles/me/measurements', body);
-  return data;
-}
-
-export async function deleteBodyMeasurements(slug: string): Promise<void> {
-  await profileClient.delete(`/api/v1/profiles/me/measurements/${slug}`);
-}
-
-export async function addPerformanceMetric(body: Record<string, unknown>): Promise<PerformanceMetricResponse> {
-  const { data } = await profileClient.post<PerformanceMetricResponse>('/api/v1/profiles/me/performance', body);
-  return data;
-}
-
-export async function deletePerformanceMetric(slug: string): Promise<void> {
-  await profileClient.delete(`/api/v1/profiles/me/performance/${slug}`);
-}
-
-export async function upsertSports(body: Record<string, unknown>): Promise<SportsProfileResponse> {
-  const { data } = await profileClient.put<SportsProfileResponse>('/api/v1/profiles/me/sports', body);
-  return data;
-}
-
-export async function upsertLifestyle(body: Record<string, unknown>): Promise<LifestyleProfileResponse> {
-  const { data } = await profileClient.put<LifestyleProfileResponse>('/api/v1/profiles/me/lifestyle', body);
-  return data;
-}
-
-export async function upsertNutrition(body: Record<string, unknown>): Promise<NutritionPreferencesResponse> {
-  const { data } = await profileClient.put<NutritionPreferencesResponse>('/api/v1/profiles/me/nutrition', body);
-  return data;
-}
-
-// ── Profile list mutations ───────────────────────────────
-export async function addInjury(body: Record<string, unknown>): Promise<InjuryResponse> {
-  const { data } = await profileClient.post<InjuryResponse>('/api/v1/profiles/me/injuries', body);
-  return data;
-}
-export async function deleteInjury(slug: string): Promise<void> {
-  await profileClient.delete(`/api/v1/profiles/me/injuries/${slug}`);
-}
-
-export async function addAllergy(body: Record<string, unknown>): Promise<FoodAllergyResponse> {
-  const { data } = await profileClient.post<FoodAllergyResponse>('/api/v1/profiles/me/allergies', body);
-  return data;
-}
-export async function deleteAllergy(slug: string): Promise<void> {
-  await profileClient.delete(`/api/v1/profiles/me/allergies/${slug}`);
-}
-
-export async function addCondition(body: Record<string, unknown>): Promise<MedicalConditionResponse> {
-  const { data } = await profileClient.post<MedicalConditionResponse>('/api/v1/profiles/me/conditions', body);
-  return data;
-}
-export async function deleteCondition(slug: string): Promise<void> {
-  await profileClient.delete(`/api/v1/profiles/me/conditions/${slug}`);
-}
-
-export async function addMedication(body: Record<string, unknown>): Promise<MedicationResponse> {
-  const { data } = await profileClient.post<MedicationResponse>('/api/v1/profiles/me/medications', body);
-  return data;
-}
-export async function deleteMedication(slug: string): Promise<void> {
-  await profileClient.delete(`/api/v1/profiles/me/medications/${slug}`);
-}
-
-export async function addExcludedFood(body: Record<string, unknown>): Promise<ExcludedFoodResponse> {
-  const { data } = await profileClient.post<ExcludedFoodResponse>('/api/v1/profiles/me/excluded-foods', body);
-  return data;
-}
-export async function deleteExcludedFood(slug: string): Promise<void> {
-  await profileClient.delete(`/api/v1/profiles/me/excluded-foods/${slug}`);
 }
 
 // ── Crawler ──────────────────────────────────────────────
@@ -800,6 +589,12 @@ export async function getMenus(): Promise<WeeklyMenuResponse[]> {
   } catch {
     return [];
   }
+}
+
+/** Menu du compte actif pour la semaine commençant le lundi `weekKey` (AAAA-MM-JJ), ou `null`. */
+export async function getMenuForWeek(weekKey: string): Promise<WeeklyMenuResponse | null> {
+  const { data } = await menuClient.get<WeeklyMenuResponse[]>('/api/v1/menus', { params: { limit: 100 } });
+  return (Array.isArray(data) ? data : []).find((m) => m.start_date === weekKey) ?? null;
 }
 
 export async function getMenuById(id: number): Promise<WeeklyMenuResponse> {

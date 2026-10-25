@@ -6,202 +6,41 @@ import { useAccount } from '../context/AccountContext';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { decodeAccessContext } from '../utils/accessContext';
 import { apiErrorMessage } from '../utils/apiError';
-import { rewrapForNewPassword, rewrapForNewRecovery } from '@nutri/e2e-core';
-import { rotateKeyMaterial, rotateRecoveryMaterial, getKeyMaterial } from '../api/e2eKeys';
-import { getUserKey } from '../crypto/vault';
-
-const RULE_INTENSITIES: [string, number][] = [['Doux', 0.5], ['Modéré', 1.0], ['Intense', 1.5]];
-const INTENSITY_HELP: Record<number, string> = {
-  0.5: 'Doux — l’algorithme privilégie la variété et vos goûts ; il s’écarte volontiers de vos cibles caloriques/protéines.',
-  1.0: 'Modéré — équilibre entre le respect de vos cibles et la diversité des recettes.',
-  1.5: 'Intense — priorité forte au respect de vos cibles : les recettes proches de vos objectifs remontent nettement.',
-};
 import {
   getMe, requestPasswordReset, changePassword, setupTotp, confirmTotp, disableMfa,
   getAccountCoach, revokeAccountCoach,
   getConsents, setHealthConsent, exportMyData, deleteMyAccount,
 } from '../api/endpoints';
-// Données de santé/profil : servies par le coffre chiffré (E2E), via un adaptateur
-// qui conserve les signatures des anciens endpoints serveur. Cf. api/healthDoc.ts.
+// Corps et activité : stockés sur l'appareil ; préférences, exclusions et cibles
+// calculées : profil serveur (sans donnée médicale). Cf. api/healthDoc.ts.
 import {
-  resetHealthDocCache,
+  resetHealthDocCache, clearDeviceProfile,
   getMyProfile, getCalculations, getSportsProfile, getLifestyle, getNutritionPreferences,
-  getBodyComposition, getBodyMeasurements, getPerformanceMetrics, getInjuries, getAllergies,
-  getExcludedFoods, getConditions, getMedications, createProfile, updateProfile, upsertSports,
-  upsertLifestyle, upsertNutrition, addBodyComposition, deleteBodyComposition, addBodyMeasurements,
-  deleteBodyMeasurements, addPerformanceMetric, deletePerformanceMetric, addInjury, deleteInjury,
-  addAllergy, deleteAllergy, addCondition, deleteCondition, addMedication, deleteMedication,
+  getExcludedFoods, createProfile, updateProfile, upsertSports, upsertLifestyle, upsertNutrition,
   addExcludedFood, deleteExcludedFood,
 } from '../api/healthDoc';
 import type {
   UserOut, ProfileResponse, CalculationResponse, SportsProfileResponse, LifestyleProfileResponse,
-  NutritionPreferencesResponse, BodyCompositionResponse, BodyMeasurementsResponse, PerformanceMetricResponse,
-  InjuryResponse, FoodAllergyResponse, ExcludedFoodResponse, MedicalConditionResponse, MedicationResponse, TotpSetupResponse,
-  CoachInfo, ConsentResponse,
+  NutritionPreferencesResponse, ExcludedFoodResponse, TotpSetupResponse, CoachInfo, ConsentResponse,
 } from '../types';
 
 // ── Sub-forms ───────────────────────────────────────────────────────────────
-function InjuryForm({ onAdd, onCancel, addFn }: { onAdd: (slug: string) => void; onCancel: () => void; addFn: (b: Record<string, unknown>) => Promise<{ slug: string }>; }) {
-  const [loading, setLoading] = useState(false); const [err, setErr] = useState('');
-  return (
-    <form className="rost-inline-form" onSubmit={async (e) => {
-      e.preventDefault(); const fd = new FormData(e.currentTarget); setLoading(true); setErr('');
-      try { const r = await addFn({ body_part: fd.get('body_part'), injury_type: fd.get('injury_type'), is_chronic: fd.get('is_chronic') === 'true', is_current: fd.get('is_current') === 'true', notes: fd.get('notes') || null }); onAdd(r.slug); }
-      catch (e2: unknown) { setErr(apiErrorMessage(e2, e2 instanceof Error ? e2.message : 'Erreur')); } setLoading(false);
-    }}>
-      <div className="rost-form-grid">
-        <input className="rost-form-input" name="body_part" placeholder="Partie du corps (ex: genou)" required />
-        <input className="rost-form-input" name="injury_type" placeholder="Type (ex: tendinite)" required />
-        <select className="rost-form-select" name="is_current"><option value="true">En cours</option><option value="false">Résolue</option></select>
-        <select className="rost-form-select" name="is_chronic"><option value="false">Aiguë</option><option value="true">Chronique</option></select>
-        <input className="rost-form-input" name="notes" placeholder="Notes (optionnel)" />
-      </div>
-      {err && <p className="rost-error">{err}</p>}
-      <div className="rost-inline-actions"><button className="rost-add-btn" type="submit" disabled={loading}>{loading ? '…' : 'Ajouter'}</button><button className="rost-btn rost-btn-ghost" type="button" onClick={onCancel}>Annuler</button></div>
-    </form>
-  );
-}
-function AllergyForm({ onAdd, onCancel, addFn }: { onAdd: () => void; onCancel: () => void; addFn: (b: Record<string, unknown>) => Promise<unknown>; }) {
-  const [loading, setLoading] = useState(false); const [err, setErr] = useState('');
-  return (
-    <form className="rost-inline-form" onSubmit={async (e) => {
-      e.preventDefault(); const fd = new FormData(e.currentTarget); setLoading(true); setErr('');
-      try { await addFn({ allergen: fd.get('allergen'), severity: fd.get('severity'), notes: fd.get('notes') || null }); onAdd(); }
-      catch (e2: unknown) { setErr(apiErrorMessage(e2, e2 instanceof Error ? e2.message : 'Erreur')); } setLoading(false);
-    }}>
-      <div className="rost-form-grid">
-        <input className="rost-form-input" name="allergen" placeholder="Allergène (ex: gluten)" required />
-        <select className="rost-form-select" name="severity"><option value="intolerance">Intolérance</option><option value="allergy">Allergie</option></select>
-        <input className="rost-form-input" name="notes" placeholder="Notes (optionnel)" />
-      </div>
-      {err && <p className="rost-error">{err}</p>}
-      <div className="rost-inline-actions"><button className="rost-add-btn" type="submit" disabled={loading}>{loading ? '…' : 'Ajouter'}</button><button className="rost-btn rost-btn-ghost" type="button" onClick={onCancel}>Annuler</button></div>
-    </form>
-  );
-}
-function ConditionForm({ onAdd, onCancel, addFn }: { onAdd: () => void; onCancel: () => void; addFn: (b: Record<string, unknown>) => Promise<unknown>; }) {
-  const [loading, setLoading] = useState(false); const [err, setErr] = useState('');
-  return (
-    <form className="rost-inline-form" onSubmit={async (e) => {
-      e.preventDefault(); const fd = new FormData(e.currentTarget); setLoading(true); setErr('');
-      try { await addFn({ condition_name: fd.get('condition_name'), category: fd.get('category'), is_current: fd.get('is_current') === 'true', notes: fd.get('notes') || null }); onAdd(); }
-      catch (e2: unknown) { setErr(apiErrorMessage(e2, e2 instanceof Error ? e2.message : 'Erreur')); } setLoading(false);
-    }}>
-      <div className="rost-form-grid">
-        <input className="rost-form-input" name="condition_name" placeholder="Nom de la condition" required />
-        <select className="rost-form-select" name="category"><option value="metabolic">Métabolique</option><option value="digestive">Digestif</option><option value="cardiovascular">Cardiovasculaire</option><option value="hormonal">Hormonal</option><option value="other">Autre</option></select>
-        <select className="rost-form-select" name="is_current"><option value="true">En cours</option><option value="false">Résolue</option></select>
-        <input className="rost-form-input" name="notes" placeholder="Notes (optionnel)" />
-      </div>
-      {err && <p className="rost-error">{err}</p>}
-      <div className="rost-inline-actions"><button className="rost-add-btn" type="submit" disabled={loading}>{loading ? '…' : 'Ajouter'}</button><button className="rost-btn rost-btn-ghost" type="button" onClick={onCancel}>Annuler</button></div>
-    </form>
-  );
-}
-function MedicationForm({ onAdd, onCancel, addFn }: { onAdd: () => void; onCancel: () => void; addFn: (b: Record<string, unknown>) => Promise<unknown>; }) {
-  const [loading, setLoading] = useState(false); const [err, setErr] = useState('');
-  return (
-    <form className="rost-inline-form" onSubmit={async (e) => {
-      e.preventDefault(); const fd = new FormData(e.currentTarget); setLoading(true); setErr('');
-      try { await addFn({ medication_name: fd.get('medication_name'), impacts_metabolism: fd.get('impacts_metabolism') === 'true', notes: fd.get('notes') || null }); onAdd(); }
-      catch (e2: unknown) { setErr(apiErrorMessage(e2, e2 instanceof Error ? e2.message : 'Erreur')); } setLoading(false);
-    }}>
-      <div className="rost-form-grid">
-        <input className="rost-form-input" name="medication_name" placeholder="Nom du médicament" required />
-        <select className="rost-form-select" name="impacts_metabolism"><option value="false">Sans impact métabolique</option><option value="true">Impact métabolique</option></select>
-        <input className="rost-form-input" name="notes" placeholder="Notes (optionnel)" />
-      </div>
-      {err && <p className="rost-error">{err}</p>}
-      <div className="rost-inline-actions"><button className="rost-add-btn" type="submit" disabled={loading}>{loading ? '…' : 'Ajouter'}</button><button className="rost-btn rost-btn-ghost" type="button" onClick={onCancel}>Annuler</button></div>
-    </form>
-  );
-}
 function ExcludedFoodForm({ onAdd, onCancel, addFn }: { onAdd: () => void; onCancel: () => void; addFn: (b: Record<string, unknown>) => Promise<unknown>; }) {
   const [loading, setLoading] = useState(false); const [err, setErr] = useState('');
   return (
     <form className="rost-inline-form" onSubmit={async (e) => {
       e.preventDefault(); const fd = new FormData(e.currentTarget); setLoading(true); setErr('');
-      try { await addFn({ food_name: fd.get('food_name'), reason: fd.get('reason') || null }); onAdd(); }
+      try { await addFn({ food_name: fd.get('food_name') }); onAdd(); }
       catch (e2: unknown) { setErr(apiErrorMessage(e2, e2 instanceof Error ? e2.message : 'Erreur')); } setLoading(false);
     }}>
       <div className="rost-form-grid">
-        <input className="rost-form-input" name="food_name" placeholder="Aliment (ex: lactose)" required />
-        <input className="rost-form-input" name="reason" placeholder="Raison (optionnel)" />
+        <input className="rost-form-input" name="food_name" placeholder="Aliment (ex: arachide, lactose)" required />
       </div>
       {err && <p className="rost-error">{err}</p>}
       <div className="rost-inline-actions"><button className="rost-add-btn" type="submit" disabled={loading}>{loading ? '…' : 'Ajouter'}</button><button className="rost-btn rost-btn-ghost" type="button" onClick={onCancel}>Annuler</button></div>
     </form>
   );
 }
-function BodyCompositionForm({ onAdd, onCancel }: { onAdd: () => void; onCancel: () => void; }) {
-  const [loading, setLoading] = useState(false); const [err, setErr] = useState('');
-  return (
-    <form className="rost-inline-form" onSubmit={async (e) => {
-      e.preventDefault(); const fd = new FormData(e.currentTarget); setLoading(true); setErr('');
-      const n = (k: string) => fd.get(k) ? Number(fd.get(k)) : null;
-      try { await addBodyComposition({ measured_at: fd.get('measured_at'), body_fat_percentage: n('body_fat_percentage'), lean_mass_kg: n('lean_mass_kg'), bone_mass_kg: n('bone_mass_kg'), water_percentage: n('water_percentage') }); onAdd(); }
-      catch (e2: unknown) { setErr(apiErrorMessage(e2, e2 instanceof Error ? e2.message : 'Erreur')); } setLoading(false);
-    }}>
-      <div className="rost-form-grid">
-        <input className="rost-form-input" name="measured_at" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
-        <input className="rost-form-input" name="body_fat_percentage" type="number" step="0.1" min="1" max="70" placeholder="% MG" />
-        <input className="rost-form-input" name="lean_mass_kg" type="number" step="0.1" min="10" max="200" placeholder="Masse maigre (kg)" />
-        <input className="rost-form-input" name="bone_mass_kg" type="number" step="0.1" min="0.5" max="20" placeholder="Masse osseuse (kg)" />
-        <input className="rost-form-input" name="water_percentage" type="number" step="0.1" min="10" max="80" placeholder="% Eau" />
-      </div>
-      {err && <p className="rost-error">{err}</p>}
-      <div className="rost-inline-actions"><button className="rost-add-btn" type="submit" disabled={loading}>{loading ? '…' : 'Ajouter'}</button><button className="rost-btn rost-btn-ghost" type="button" onClick={onCancel}>Annuler</button></div>
-    </form>
-  );
-}
-function BodyMeasurementsForm({ onAdd, onCancel }: { onAdd: () => void; onCancel: () => void; }) {
-  const [loading, setLoading] = useState(false); const [err, setErr] = useState('');
-  return (
-    <form className="rost-inline-form" onSubmit={async (e) => {
-      e.preventDefault(); const fd = new FormData(e.currentTarget); const n = (k: string) => fd.get(k) ? Number(fd.get(k)) : null; setLoading(true); setErr('');
-      try { await addBodyMeasurements({ measured_at: fd.get('measured_at'), waist_cm: n('waist_cm'), hips_cm: n('hips_cm'), chest_cm: n('chest_cm'), shoulders_cm: n('shoulders_cm'), left_arm_cm: n('left_arm_cm'), right_arm_cm: n('right_arm_cm'), left_thigh_cm: n('left_thigh_cm'), right_thigh_cm: n('right_thigh_cm') }); onAdd(); }
-      catch (e2: unknown) { setErr(apiErrorMessage(e2, e2 instanceof Error ? e2.message : 'Erreur')); } setLoading(false);
-    }}>
-      <div className="rost-form-grid">
-        <input className="rost-form-input" name="measured_at" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
-        <input className="rost-form-input" name="waist_cm" type="number" step="0.1" placeholder="Tour de taille (cm)" />
-        <input className="rost-form-input" name="hips_cm" type="number" step="0.1" placeholder="Hanches (cm)" />
-        <input className="rost-form-input" name="chest_cm" type="number" step="0.1" placeholder="Poitrine (cm)" />
-        <input className="rost-form-input" name="shoulders_cm" type="number" step="0.1" placeholder="Épaules (cm)" />
-        <input className="rost-form-input" name="left_arm_cm" type="number" step="0.1" placeholder="Bras G (cm)" />
-        <input className="rost-form-input" name="right_arm_cm" type="number" step="0.1" placeholder="Bras D (cm)" />
-        <input className="rost-form-input" name="left_thigh_cm" type="number" step="0.1" placeholder="Cuisse G (cm)" />
-        <input className="rost-form-input" name="right_thigh_cm" type="number" step="0.1" placeholder="Cuisse D (cm)" />
-      </div>
-      {err && <p className="rost-error">{err}</p>}
-      <div className="rost-inline-actions"><button className="rost-add-btn" type="submit" disabled={loading}>{loading ? '…' : 'Ajouter'}</button><button className="rost-btn rost-btn-ghost" type="button" onClick={onCancel}>Annuler</button></div>
-    </form>
-  );
-}
-function PerformanceMetricForm({ onAdd, onCancel }: { onAdd: () => void; onCancel: () => void; }) {
-  const [loading, setLoading] = useState(false); const [err, setErr] = useState('');
-  return (
-    <form className="rost-inline-form" onSubmit={async (e) => {
-      e.preventDefault(); const fd = new FormData(e.currentTarget); const nf = (k: string) => fd.get(k) ? Number(fd.get(k)) : null; setLoading(true); setErr('');
-      try { await addPerformanceMetric({ measured_at: fd.get('measured_at'), vo2max: nf('vo2max'), vma_kmh: nf('vma_kmh'), ftp_watts: nf('ftp_watts'), one_rm_squat_kg: nf('one_rm_squat_kg'), one_rm_bench_press_kg: nf('one_rm_bench_press_kg'), one_rm_deadlift_kg: nf('one_rm_deadlift_kg'), one_rm_overhead_press_kg: nf('one_rm_overhead_press_kg') }); onAdd(); }
-      catch (e2: unknown) { setErr(apiErrorMessage(e2, e2 instanceof Error ? e2.message : 'Erreur')); } setLoading(false);
-    }}>
-      <div className="rost-form-grid">
-        <input className="rost-form-input" name="measured_at" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
-        <input className="rost-form-input" name="vo2max" type="number" step="0.1" placeholder="VO₂max" />
-        <input className="rost-form-input" name="vma_kmh" type="number" step="0.1" placeholder="VMA (km/h)" />
-        <input className="rost-form-input" name="ftp_watts" type="number" placeholder="FTP (W)" />
-        <input className="rost-form-input" name="one_rm_squat_kg" type="number" step="0.5" placeholder="Squat 1RM (kg)" />
-        <input className="rost-form-input" name="one_rm_bench_press_kg" type="number" step="0.5" placeholder="Bench 1RM (kg)" />
-        <input className="rost-form-input" name="one_rm_deadlift_kg" type="number" step="0.5" placeholder="DL 1RM (kg)" />
-        <input className="rost-form-input" name="one_rm_overhead_press_kg" type="number" step="0.5" placeholder="OHP 1RM (kg)" />
-      </div>
-      {err && <p className="rost-error">{err}</p>}
-      <div className="rost-inline-actions"><button className="rost-add-btn" type="submit" disabled={loading}>{loading ? '…' : 'Ajouter'}</button><button className="rost-btn rost-btn-ghost" type="button" onClick={onCancel}>Annuler</button></div>
-    </form>
-  );
-}
-
 function initials(email: string): string {
   const parts = email.split('@')[0].split(/[._-]/);
   return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('') || '??';
@@ -217,29 +56,22 @@ const TAB_LABELS: Record<Exclude<Tab, 'securite' | 'confidentialite'>, string> =
 
 // Sections du « classeur » de l'onglet Profil : navigation verticale à gauche,
 // contenu à droite. Test de ce layout ici avant de l'étendre aux autres onglets.
-type ProfilSection = 'physique' | 'calculs' | 'composition' | 'mensurations' | 'blessures' | 'conditions' | 'medicaments';
+type ProfilSection = 'physique' | 'calculs';
 const PROFIL_SECTIONS: { id: ProfilSection; label: string }[] = [
   { id: 'physique', label: 'Données physiques' },
   { id: 'calculs', label: 'Calculs métaboliques' },
-  { id: 'composition', label: 'Composition corporelle' },
-  { id: 'mensurations', label: 'Mensurations' },
-  { id: 'blessures', label: 'Blessures' },
-  { id: 'conditions', label: 'Conditions médicales' },
-  { id: 'medicaments', label: 'Médicaments' },
 ];
 
-type ActiviteSection = 'sportif' | 'modedevie' | 'performance';
+type ActiviteSection = 'sportif' | 'modedevie';
 const ACTIVITE_SECTIONS: { id: ActiviteSection; label: string }[] = [
   { id: 'sportif', label: 'Profil sportif' },
-  { id: 'modedevie', label: 'Mode de vie' },
-  { id: 'performance', label: 'Métriques de performance' },
+  { id: 'modedevie', label: 'Activité quotidienne' },
 ];
 
-type NutritionSection = 'preferences' | 'exclus' | 'allergies' | 'regles';
+type NutritionSection = 'preferences' | 'exclus' | 'regles';
 const NUTRITION_SECTIONS: { id: NutritionSection; label: string }[] = [
   { id: 'preferences', label: 'Préférences nutritionnelles' },
   { id: 'exclus', label: 'Aliments exclus' },
-  { id: 'allergies', label: 'Allergies & intolérances' },
   { id: 'regles', label: 'Règles nutritionnelles' },
 ];
 
@@ -302,14 +134,7 @@ export default function AuroraProfil() {
   const [sports, setSports] = useState<SportsProfileResponse | null>(null);
   const [lifestyle, setLifestyle] = useState<LifestyleProfileResponse | null>(null);
   const [nutrition, setNutrition] = useState<NutritionPreferencesResponse | null>(null);
-  const [compo, setCompo] = useState<BodyCompositionResponse[]>([]);
-  const [measures, setMeasures] = useState<BodyMeasurementsResponse[]>([]);
-  const [perf, setPerf] = useState<PerformanceMetricResponse[]>([]);
-  const [injuries, setInjuries] = useState<InjuryResponse[]>([]);
-  const [allergies, setAllergies] = useState<FoodAllergyResponse[]>([]);
   const [excluded, setExcluded] = useState<ExcludedFoodResponse[]>([]);
-  const [conditions, setConditions] = useState<MedicalConditionResponse[]>([]);
-  const [medications, setMedications] = useState<MedicationResponse[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [newSportsList, setNewSportsList] = useState<string[]>([]);
@@ -318,11 +143,6 @@ export default function AuroraProfil() {
   const [pwdResetLoading, setPwdResetLoading] = useState(false);
   const [pwdCurrent, setPwdCurrent] = useState(''); const [pwdNew, setPwdNew] = useState(''); const [pwdConfirm, setPwdConfirm] = useState('');
   const [pwdSaving, setPwdSaving] = useState(false); const [pwdErr, setPwdErr] = useState(''); const [pwdOk, setPwdOk] = useState(false);
-  // E2E : changement de passphrase de chiffrement (≠ mot de passe de connexion).
-  const [passNew, setPassNew] = useState(''); const [passConfirm, setPassConfirm] = useState('');
-  const [passSaving, setPassSaving] = useState(false); const [passErr, setPassErr] = useState(''); const [passOk, setPassOk] = useState(false);
-  // E2E : régénération du code de récupération (affiché une seule fois).
-  const [recBusy, setRecBusy] = useState(false); const [recErr, setRecErr] = useState(''); const [newRecoveryCode, setNewRecoveryCode] = useState<string | null>(null);
   const [totpSetup, setTotpSetup] = useState<TotpSetupResponse | null>(null);
   const [totpCode, setTotpCode] = useState(''); const [totpLoading, setTotpLoading] = useState(false);
   const [totpErr, setTotpErr] = useState(''); const [totpDone, setTotpDone] = useState(false);
@@ -332,10 +152,7 @@ export default function AuroraProfil() {
   const [savingRules, setSavingRules] = useState(false);
   const [profileErr, setProfileErr] = useState(''); const [sportsErr, setSportsErr] = useState('');
   const [lifestyleErr, setLifestyleErr] = useState(''); const [nutritionErr, setNutritionErr] = useState('');
-  const [showAddInjury, setShowAddInjury] = useState(false); const [showAddAllergy, setShowAddAllergy] = useState(false);
-  const [showAddCondition, setShowAddCondition] = useState(false); const [showAddMedication, setShowAddMedication] = useState(false);
-  const [showAddExcluded, setShowAddExcluded] = useState(false); const [showAddCompo, setShowAddCompo] = useState(false);
-  const [showAddMeasures, setShowAddMeasures] = useState(false); const [showAddPerf, setShowAddPerf] = useState(false);
+  const [showAddExcluded, setShowAddExcluded] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false); const [editingSports, setEditingSports] = useState(false);
   const [editingLifestyle, setEditingLifestyle] = useState(false); const [editingNutrition, setEditingNutrition] = useState(false);
   const [editSportsList, setEditSportsList] = useState<string[]>([]); const [editSportsInput, setEditSportsInput] = useState('');
@@ -349,14 +166,12 @@ export default function AuroraProfil() {
   const [deleteText, setDeleteText] = useState(''); const [deleting, setDeleting] = useState(false); const [deleteErr, setDeleteErr] = useState('');
 
   useEffect(() => {
-    resetHealthDocCache(); // recharge le document chiffré à chaque montage de la page
+    resetHealthDocCache(); // recharge le profil serveur à chaque montage de la page
     Promise.all([
       getMe().then((u) => { setUser(u); setMfaEnabled(u.two_factor_enabled); }),
       getMyProfile().then(setProfile), getCalculations().then(setCalcs), getSportsProfile().then(setSports),
       getLifestyle().then(setLifestyle), getNutritionPreferences().then(setNutrition),
-      getBodyComposition().then(setCompo), getBodyMeasurements().then(setMeasures), getPerformanceMetrics().then(setPerf),
-      getInjuries().then(setInjuries), getAllergies().then(setAllergies), getExcludedFoods().then(setExcluded),
-      getConditions().then(setConditions), getMedications().then(setMedications),
+      getExcludedFoods().then(setExcluded),
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -404,7 +219,7 @@ export default function AuroraProfil() {
   // claim health_consent est recalculé au refresh), puis recharge l'historique.
   const toggleHealthConsent = async (granted: boolean) => {
     if (consentBusy) return;
-    if (!granted && !window.confirm('Retirer votre consentement ? Vous ne pourrez plus ajouter ni modifier vos données de santé tant qu’il n’est pas redonné. Vos données déjà enregistrées sont conservées.')) return;
+    if (!granted && !window.confirm('Retirer votre consentement ? Vous ne pourrez plus modifier votre objectif, vos préférences ni vos cibles nutritionnelles tant qu’il n’est pas redonné. Les données déjà enregistrées sont conservées.')) return;
     setConsentBusy(true); setConsentErr('');
     try {
       await setHealthConsent(granted);
@@ -444,6 +259,7 @@ export default function AuroraProfil() {
     setDeleting(true); setDeleteErr('');
     try {
       await deleteMyAccount(user.id);
+      clearDeviceProfile();
       await logout();
       window.location.assign('/login');
     } catch (e: unknown) {
@@ -468,9 +284,8 @@ export default function AuroraProfil() {
       diet_type: nutrition.diet_type, main_goal: nutrition.main_goal,
       meals_per_day: nutrition.meals_per_day, snacks_per_day: nutrition.snacks_per_day,
       practices_if: nutrition.practices_if, fasting_window_hours: nutrition.fasting_window_hours,
-      cooking_level: nutrition.cooking_level, hydration_target_ml: nutrition.hydration_target_ml,
-      budget_per_day_eur: nutrition.budget_per_day_eur, supplements: nutrition.supplements,
-      rules_aggressiveness: nutrition.rules_aggressiveness, rules_variety_pct: nutrition.rules_variety_pct,
+      cooking_level: nutrition.cooking_level, budget_per_day_eur: nutrition.budget_per_day_eur,
+      rules_variety_pct: nutrition.rules_variety_pct,
       rules_override_calories: nutrition.rules_override_calories, rules_override_proteines: nutrition.rules_override_proteines,
       ...patch,
     };
@@ -488,8 +303,8 @@ export default function AuroraProfil() {
         )}
         {canWriteProfile && !healthConsentGranted && (
           <div className="rost-readonly-banner" role="status">
-            🩺 Données de santé : votre consentement (art. 9 RGPD) est requis pour ajouter ou
-            modifier blessures, conditions médicales, médicaments et allergies.{' '}
+            🩺 Votre consentement (art. 9 RGPD) est requis pour enregistrer votre objectif, vos
+            préférences et vos cibles nutritionnelles. Vos données physiques restent sur cet appareil.{' '}
             <button type="button" className="rost-link-btn" onClick={() => setActiveTab('confidentialite')}>
               Gérer mon consentement
             </button>
@@ -532,6 +347,10 @@ export default function AuroraProfil() {
                     <div className="rost-card-head">
                       <span className="rost-card-title">Données physiques</span>
                     </div>
+                    <p className="rost-card-intro">
+                      📱 Conservées <strong>sur cet appareil</strong> uniquement : le calcul se fait ici et seules
+                      vos cibles (calories, macros) sont envoyées pour générer vos menus.
+                    </p>
               {loading ? <div className="rost-skel" style={{ height: 120 }} />
                 : !profile ? (
                   <form className="rost-form" onSubmit={async (e) => {
@@ -573,7 +392,6 @@ export default function AuroraProfil() {
                       <Stat label="Objectif" value={fmt(profile.target_weight_kg)} unit={profile.target_weight_kg ? ' kg' : ''} />
                       <Stat label="Sexe" value={cap(profile.biological_sex)} />
                       <Stat label="Naissance" value={fmtDate(profile.date_of_birth)} />
-                      <Stat label="Profil créé" value={fmtDate(profile.created_at)} />
                     </div>
                     {canWriteProfile && <div className="rost-card-foot"><button className="rost-btn" onClick={() => setEditingProfile(true)}>Modifier</button></div>}
                   </>
@@ -623,87 +441,6 @@ export default function AuroraProfil() {
                 )}
                   </article>
                 )}
-                {profilSection === 'composition' && (
-                  <article className="rost-card">
-                    <div className="rost-card-head"><span className="rost-card-title">Composition corporelle</span><button className="rost-btn" onClick={() => setShowAddCompo((v) => !v)}>{showAddCompo ? '✕' : '+ Ajouter'}</button></div>
-                    {showAddCompo && <BodyCompositionForm onAdd={async () => { setCompo(await getBodyComposition()); setShowAddCompo(false); }} onCancel={() => setShowAddCompo(false)} />}
-                    {loading ? <div className="rost-skel" style={{ height: 80 }} /> : compo.length === 0 && !showAddCompo ? <p className="rost-empty">Aucune mesure enregistrée</p>
-                      : <div className="rost-timeline">{compo.slice(0, 5).map((c) => (
-                        <div className="rost-tl-entry" key={c.id}>
-                          <span className="rost-tl-date">{fmtDate(c.measured_at)}</span>
-                          <div className="rost-tl-data">
-                            {c.body_fat_percentage != null && <span className="rost-tl-stat">MG <strong>{c.body_fat_percentage}%</strong></span>}
-                            {c.lean_mass_kg != null && <span className="rost-tl-stat">MM <strong>{c.lean_mass_kg}kg</strong></span>}
-                            {c.bone_mass_kg != null && <span className="rost-tl-stat">Os <strong>{c.bone_mass_kg}kg</strong></span>}
-                            {c.water_percentage != null && <span className="rost-tl-stat">Eau <strong>{c.water_percentage}%</strong></span>}
-                          </div>
-                          <button className="rost-item-del" title="Supprimer" onClick={async () => { await deleteBodyComposition(c.slug); setCompo((x) => x.filter((y) => y.id !== c.id)); }}>✕</button>
-                        </div>))}</div>}
-                  </article>
-                )}
-                {profilSection === 'mensurations' && (
-                  <article className="rost-card">
-                    <div className="rost-card-head"><span className="rost-card-title">Mensurations</span><button className="rost-btn" onClick={() => setShowAddMeasures((v) => !v)}>{showAddMeasures ? '✕' : '+ Ajouter'}</button></div>
-                    {showAddMeasures && <BodyMeasurementsForm onAdd={async () => { setMeasures(await getBodyMeasurements()); setShowAddMeasures(false); }} onCancel={() => setShowAddMeasures(false)} />}
-                    {loading ? <div className="rost-skel" style={{ height: 80 }} /> : measures.length === 0 && !showAddMeasures ? <p className="rost-empty">Aucune mensuration enregistrée</p>
-                      : <div className="rost-timeline">{measures.slice(0, 3).map((m) => (
-                        <div className="rost-tl-entry" key={m.id}>
-                          <span className="rost-tl-date">{fmtDate(m.measured_at)}</span>
-                          <div className="rost-tl-data">
-                            {m.waist_cm != null && <span className="rost-tl-stat">Taille <strong>{m.waist_cm}cm</strong></span>}
-                            {m.hips_cm != null && <span className="rost-tl-stat">Hanches <strong>{m.hips_cm}cm</strong></span>}
-                            {m.chest_cm != null && <span className="rost-tl-stat">Poitrine <strong>{m.chest_cm}cm</strong></span>}
-                            {m.shoulders_cm != null && <span className="rost-tl-stat">Épaules <strong>{m.shoulders_cm}cm</strong></span>}
-                            {m.left_arm_cm != null && <span className="rost-tl-stat">Bras G <strong>{m.left_arm_cm}cm</strong></span>}
-                            {m.right_arm_cm != null && <span className="rost-tl-stat">Bras D <strong>{m.right_arm_cm}cm</strong></span>}
-                          </div>
-                          <button className="rost-item-del" title="Supprimer" onClick={async () => { await deleteBodyMeasurements(m.slug); setMeasures((x) => x.filter((y) => y.id !== m.id)); }}>✕</button>
-                        </div>))}</div>}
-                  </article>
-                )}
-                {profilSection === 'blessures' && (
-                  <article className="rost-card">
-                    <div className="rost-card-head"><span className="rost-card-title">Blessures</span><button className="rost-btn" onClick={() => setShowAddInjury((v) => !v)}>{showAddInjury ? '✕' : '+ Ajouter'}</button></div>
-                    {showAddInjury && <InjuryForm onAdd={async () => { setInjuries(await getInjuries()); setShowAddInjury(false); }} onCancel={() => setShowAddInjury(false)} addFn={addInjury} />}
-                    {loading ? <div className="rost-skel" style={{ height: 80 }} /> : injuries.length === 0 && !showAddInjury ? <p className="rost-empty">Aucune blessure déclarée</p>
-                      : <div className="rost-item-list">{injuries.map((inj) => (
-                        <div className="rost-item" key={inj.id}>
-                          <span className={`rost-item-dot ${inj.is_current ? 'red' : ''}`} />
-                          <div className="rost-item-content">
-                            <div className="rost-item-title">{cap(inj.body_part)} — {cap(inj.injury_type)}</div>
-                            <div className="rost-item-sub">{inj.is_chronic && 'Chronique · '}{inj.is_current ? 'En cours' : 'Résolue'}</div>
-                            {inj.notes && <div className="rost-item-sub">{inj.notes}</div>}
-                          </div>
-                          <button className="rost-item-del" title="Supprimer" onClick={async () => { await deleteInjury(inj.slug); setInjuries((x) => x.filter((y) => y.id !== inj.id)); }}>✕</button>
-                        </div>))}</div>}
-                  </article>
-                )}
-                {profilSection === 'conditions' && (
-                  <article className="rost-card">
-                    <div className="rost-card-head"><span className="rost-card-title">Conditions médicales</span><button className="rost-btn" onClick={() => setShowAddCondition((v) => !v)}>{showAddCondition ? '✕' : '+ Ajouter'}</button></div>
-                    {showAddCondition && <ConditionForm onAdd={async () => { setConditions(await getConditions()); setShowAddCondition(false); }} onCancel={() => setShowAddCondition(false)} addFn={addCondition} />}
-                    {loading ? <div className="rost-skel" style={{ height: 80 }} /> : conditions.length === 0 && !showAddCondition ? <p className="rost-empty">Aucune condition médicale déclarée</p>
-                      : <div className="rost-item-list">{conditions.map((c) => (
-                        <div className="rost-item" key={c.id}>
-                          <span className={`rost-item-dot ${c.is_current ? 'red' : ''}`} />
-                          <div className="rost-item-content"><div className="rost-item-title">{c.condition_name}</div><div className="rost-item-sub">{cap(c.category)} · {c.is_current ? 'En cours' : 'Résolue'}</div>{c.notes && <div className="rost-item-sub">{c.notes}</div>}</div>
-                          <button className="rost-item-del" title="Supprimer" onClick={async () => { await deleteCondition(c.slug); setConditions((x) => x.filter((y) => y.id !== c.id)); }}>✕</button>
-                        </div>))}</div>}
-                  </article>
-                )}
-                {profilSection === 'medicaments' && (
-                  <article className="rost-card">
-                    <div className="rost-card-head"><span className="rost-card-title">Médicaments</span><button className="rost-btn" onClick={() => setShowAddMedication((v) => !v)}>{showAddMedication ? '✕' : '+ Ajouter'}</button></div>
-                    {showAddMedication && <MedicationForm onAdd={async () => { setMedications(await getMedications()); setShowAddMedication(false); }} onCancel={() => setShowAddMedication(false)} addFn={addMedication} />}
-                    {loading ? <div className="rost-skel" style={{ height: 80 }} /> : medications.length === 0 && !showAddMedication ? <p className="rost-empty">Aucun médicament déclaré</p>
-                      : <div className="rost-item-list">{medications.map((m) => (
-                        <div className="rost-item" key={m.id}>
-                          <span className={`rost-item-dot ${m.impacts_metabolism ? 'red' : ''}`} />
-                          <div className="rost-item-content"><div className="rost-item-title">{m.medication_name}</div>{m.impacts_metabolism && <div className="rost-item-sub">Impact métabolique</div>}{m.notes && <div className="rost-item-sub">{m.notes}</div>}</div>
-                          <button className="rost-item-del" title="Supprimer" onClick={async () => { await deleteMedication(m.slug); setMedications((x) => x.filter((y) => y.id !== m.id)); }}>✕</button>
-                        </div>))}</div>}
-                  </article>
-                )}
               </div>
             </div>
           )}
@@ -729,7 +466,7 @@ export default function AuroraProfil() {
                 : !sports ? (
                   <form className="rost-form" onSubmit={async (e) => {
                     e.preventDefault(); const fd = new FormData(e.currentTarget); setSavingSports(true); setSportsErr('');
-                    try { setSports(await upsertSports({ sports: newSportsList, practice_level: fd.get('practice_level') || 'beginner', sessions_per_week: fd.get('sessions_per_week') ? Number(fd.get('sessions_per_week')) : 0, avg_session_duration_min: fd.get('avg_session_duration_min') ? Number(fd.get('avg_session_duration_min')) : 0, avg_intensity_rpe: 5, resting_heart_rate_bpm: null })); }
+                    try { setSports(await upsertSports({ sports: newSportsList, practice_level: fd.get('practice_level') || 'beginner', sessions_per_week: fd.get('sessions_per_week') ? Number(fd.get('sessions_per_week')) : 0, avg_session_duration_min: fd.get('avg_session_duration_min') ? Number(fd.get('avg_session_duration_min')) : 0, avg_intensity_rpe: 5 })); }
                     catch (err: unknown) { setSportsErr(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')); } setSavingSports(false);
                   }}>
                     <div className="rost-form-group rost-grid-full">
@@ -751,7 +488,7 @@ export default function AuroraProfil() {
                 ) : editingSports ? (
                   <form className="rost-form" onSubmit={async (e) => {
                     e.preventDefault(); const fd = new FormData(e.currentTarget); setSavingSports(true); setSportsErr('');
-                    try { setSports(await upsertSports({ sports: editSportsList, practice_level: fd.get('practice_level') || sports.practice_level, sessions_per_week: fd.get('sessions_per_week') ? Number(fd.get('sessions_per_week')) : sports.sessions_per_week, avg_session_duration_min: fd.get('avg_session_duration_min') ? Number(fd.get('avg_session_duration_min')) : sports.avg_session_duration_min, avg_intensity_rpe: sports.avg_intensity_rpe, resting_heart_rate_bpm: sports.resting_heart_rate_bpm })); setEditingSports(false); }
+                    try { setSports(await upsertSports({ sports: editSportsList, practice_level: fd.get('practice_level') || sports.practice_level, sessions_per_week: fd.get('sessions_per_week') ? Number(fd.get('sessions_per_week')) : sports.sessions_per_week, avg_session_duration_min: fd.get('avg_session_duration_min') ? Number(fd.get('avg_session_duration_min')) : sports.avg_session_duration_min, avg_intensity_rpe: sports.avg_intensity_rpe })); setEditingSports(false); }
                     catch (err: unknown) { setSportsErr(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')); } setSavingSports(false);
                   }}>
                     <div className="rost-form-group rost-grid-full">
@@ -776,7 +513,6 @@ export default function AuroraProfil() {
                       <Stat label="Niveau" value={cap(sports.practice_level)} />
                       <Stat label="Sessions/sem." value={sports.sessions_per_week} />
                       <Stat label="Durée moy." value={sports.avg_session_duration_min} unit=" min" />
-                      <Stat label="FC repos" value={sports.resting_heart_rate_bpm ?? '—'} unit={sports.resting_heart_rate_bpm ? ' bpm' : ''} />
                     </div>
                     {sports.sports.length > 0 && <div className="rost-chips">{sports.sports.map((s) => <span key={s} className="rost-chip rost-chip-ghost">{cap(s)}</span>)}</div>}
                     {canWriteProfile && <div className="rost-card-foot"><button className="rost-btn" onClick={() => { setEditSportsList(sports.sports); setEditingSports(true); }}>Modifier</button></div>}
@@ -787,39 +523,31 @@ export default function AuroraProfil() {
                 {activiteSection === 'modedevie' && (
                   <article className="rost-card">
                     <div className="rost-card-head">
-                      <span className="rost-card-title">Mode de vie</span>
+                      <span className="rost-card-title">Activité quotidienne</span>
                     </div>
               {loading ? <div className="rost-skel" style={{ height: 120 }} />
                 : !lifestyle ? (
                   <form className="rost-form" onSubmit={async (e) => {
                     e.preventDefault(); const fd = new FormData(e.currentTarget); setSavingLifestyle(true); setLifestyleErr('');
-                    try { setLifestyle(await upsertLifestyle({ profession_activity_level: fd.get('profession_activity_level') || 'sedentary', stress_level: fd.get('stress_level') || 'moderate', sleep_hours: fd.get('sleep_hours') ? Number(fd.get('sleep_hours')) : null, chronotype: fd.get('chronotype') || 'intermediate', alcohol_frequency: fd.get('alcohol_frequency') || 'never', is_smoker: fd.get('is_smoker') === 'true', sedentary_hours_per_day: null })); }
+                    try { setLifestyle(await upsertLifestyle({ profession_activity_level: fd.get('profession_activity_level') || 'sedentary', sedentary_hours_per_day: fd.get('sedentary_hours_per_day') ? Number(fd.get('sedentary_hours_per_day')) : null })); }
                     catch (err: unknown) { setLifestyleErr(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')); } setSavingLifestyle(false);
                   }}>
                     <div className="rost-form-grid">
                       <label className="rost-form-group"><span>Activité prof.</span><select className="rost-form-select" name="profession_activity_level"><option value="sedentary">Sédentaire</option><option value="light">Légère</option><option value="moderate">Modérée</option><option value="heavy">Intense</option><option value="very_heavy">Très intense</option></select></label>
-                      <label className="rost-form-group"><span>Stress</span><select className="rost-form-select" name="stress_level"><option value="low">Faible</option><option value="moderate">Modéré</option><option value="high">Élevé</option></select></label>
-                      <label className="rost-form-group"><span>Sommeil (h)</span><input className="rost-form-input" name="sleep_hours" type="number" min="3" max="14" step="0.5" placeholder="8" /></label>
-                      <label className="rost-form-group"><span>Chronotype</span><select className="rost-form-select" name="chronotype"><option value="morning">Lève-tôt</option><option value="intermediate">Intermédiaire</option><option value="evening">Couche-tard</option></select></label>
-                      <label className="rost-form-group"><span>Alcool</span><select className="rost-form-select" name="alcohol_frequency"><option value="never">Jamais</option><option value="occasional">Occasionnel</option><option value="moderate">Modéré</option><option value="regular">Régulier</option></select></label>
-                      <label className="rost-form-group"><span>Fumeur</span><select className="rost-form-select" name="is_smoker"><option value="false">Non</option><option value="true">Oui</option></select></label>
+                      <label className="rost-form-group"><span>Heures assis / jour</span><input className="rost-form-input" name="sedentary_hours_per_day" type="number" min="0" max="24" step="0.5" placeholder="8" /></label>
                     </div>
                     {lifestyleErr && <p className="rost-error">{lifestyleErr}</p>}
-                    <button className="rost-add-btn" type="submit" disabled={savingLifestyle}>{savingLifestyle ? 'Enregistrement…' : 'Créer mon mode de vie'}</button>
+                    <button className="rost-add-btn" type="submit" disabled={savingLifestyle}>{savingLifestyle ? 'Enregistrement…' : 'Enregistrer mon activité'}</button>
                   </form>
                 ) : editingLifestyle ? (
                   <form className="rost-form" onSubmit={async (e) => {
                     e.preventDefault(); const fd = new FormData(e.currentTarget); setSavingLifestyle(true); setLifestyleErr('');
-                    try { setLifestyle(await upsertLifestyle({ profession_activity_level: fd.get('profession_activity_level') || lifestyle.profession_activity_level, stress_level: fd.get('stress_level') || lifestyle.stress_level, sleep_hours: fd.get('sleep_hours') ? Number(fd.get('sleep_hours')) : lifestyle.sleep_hours, chronotype: fd.get('chronotype') || lifestyle.chronotype, alcohol_frequency: fd.get('alcohol_frequency') || lifestyle.alcohol_frequency, is_smoker: fd.get('is_smoker') === 'true', sedentary_hours_per_day: lifestyle.sedentary_hours_per_day })); setEditingLifestyle(false); }
+                    try { setLifestyle(await upsertLifestyle({ profession_activity_level: fd.get('profession_activity_level') || lifestyle.profession_activity_level, sedentary_hours_per_day: fd.get('sedentary_hours_per_day') ? Number(fd.get('sedentary_hours_per_day')) : null })); setEditingLifestyle(false); }
                     catch (err: unknown) { setLifestyleErr(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')); } setSavingLifestyle(false);
                   }}>
                     <div className="rost-form-grid">
                       <label className="rost-form-group"><span>Activité prof.</span><select className="rost-form-select" name="profession_activity_level" defaultValue={lifestyle.profession_activity_level ?? ''}><option value="sedentary">Sédentaire</option><option value="light">Légère</option><option value="moderate">Modérée</option><option value="heavy">Intense</option><option value="very_heavy">Très intense</option></select></label>
-                      <label className="rost-form-group"><span>Stress</span><select className="rost-form-select" name="stress_level" defaultValue={lifestyle.stress_level ?? ''}><option value="low">Faible</option><option value="moderate">Modéré</option><option value="high">Élevé</option></select></label>
-                      <label className="rost-form-group"><span>Sommeil (h)</span><input className="rost-form-input" name="sleep_hours" type="number" min="3" max="14" step="0.5" defaultValue={lifestyle.sleep_hours ?? ''} /></label>
-                      <label className="rost-form-group"><span>Chronotype</span><select className="rost-form-select" name="chronotype" defaultValue={lifestyle.chronotype ?? ''}><option value="morning">Lève-tôt</option><option value="intermediate">Intermédiaire</option><option value="evening">Couche-tard</option></select></label>
-                      <label className="rost-form-group"><span>Alcool</span><select className="rost-form-select" name="alcohol_frequency" defaultValue={lifestyle.alcohol_frequency ?? ''}><option value="never">Jamais</option><option value="occasional">Occasionnel</option><option value="moderate">Modéré</option><option value="regular">Régulier</option></select></label>
-                      <label className="rost-form-group"><span>Fumeur</span><select className="rost-form-select" name="is_smoker" defaultValue={lifestyle.is_smoker ? 'true' : 'false'}><option value="false">Non</option><option value="true">Oui</option></select></label>
+                      <label className="rost-form-group"><span>Heures assis / jour</span><input className="rost-form-input" name="sedentary_hours_per_day" type="number" min="0" max="24" step="0.5" defaultValue={lifestyle.sedentary_hours_per_day ?? ''} /></label>
                     </div>
                     {lifestyleErr && <p className="rost-error">{lifestyleErr}</p>}
                     <div className="rost-inline-actions"><button className="rost-add-btn" type="submit" disabled={savingLifestyle}>{savingLifestyle ? 'Enregistrement…' : 'Sauvegarder'}</button><button className="rost-btn rost-btn-ghost" type="button" onClick={() => { setEditingLifestyle(false); setLifestyleErr(''); }}>Annuler</button></div>
@@ -828,35 +556,11 @@ export default function AuroraProfil() {
                   <>
                     <div className="rost-pstats">
                       <Stat label="Activité prof." value={cap(lifestyle.profession_activity_level)} />
-                      <Stat label="Stress" value={cap(lifestyle.stress_level)} />
-                      <Stat label="Sommeil" value={fmt(lifestyle.sleep_hours)} unit={lifestyle.sleep_hours ? ' h' : ''} />
-                      <Stat label="Chronotype" value={cap(lifestyle.chronotype)} />
-                      <Stat label="Alcool" value={cap(lifestyle.alcohol_frequency)} />
-                      <Stat label="Fumeur" value={lifestyle.is_smoker ? 'Oui' : 'Non'} />
+                      <Stat label="Heures assis" value={fmt(lifestyle.sedentary_hours_per_day)} unit={lifestyle.sedentary_hours_per_day != null ? ' h/j' : ''} />
                     </div>
                     {canWriteProfile && <div className="rost-card-foot"><button className="rost-btn" onClick={() => setEditingLifestyle(true)}>Modifier</button></div>}
                   </>
                 )}
-                  </article>
-                )}
-                {activiteSection === 'performance' && (
-                  <article className="rost-card">
-                    <div className="rost-card-head"><span className="rost-card-title">Métriques de performance</span><button className="rost-btn" onClick={() => setShowAddPerf((v) => !v)}>{showAddPerf ? '✕' : '+ Ajouter'}</button></div>
-                    {showAddPerf && <PerformanceMetricForm onAdd={async () => { setPerf(await getPerformanceMetrics()); setShowAddPerf(false); }} onCancel={() => setShowAddPerf(false)} />}
-                    {loading ? <div className="rost-skel" style={{ height: 80 }} /> : perf.length === 0 && !showAddPerf ? <p className="rost-empty">Aucune métrique enregistrée</p>
-                      : <div className="rost-timeline">{perf.slice(0, 5).map((p) => (
-                        <div className="rost-tl-entry" key={p.id}>
-                          <span className="rost-tl-date">{fmtDate(p.measured_at)}</span>
-                          <div className="rost-tl-data">
-                            {p.vo2max && <span className="rost-tl-stat">VO₂max <strong>{p.vo2max}</strong></span>}
-                            {p.vma_kmh && <span className="rost-tl-stat">VMA <strong>{p.vma_kmh} km/h</strong></span>}
-                            {p.ftp_watts && <span className="rost-tl-stat">FTP <strong>{p.ftp_watts}W</strong></span>}
-                            {p.one_rm_squat_kg && <span className="rost-tl-stat">Squat <strong>{p.one_rm_squat_kg}kg</strong></span>}
-                            {p.one_rm_bench_press_kg && <span className="rost-tl-stat">Bench <strong>{p.one_rm_bench_press_kg}kg</strong></span>}
-                            {p.one_rm_deadlift_kg && <span className="rost-tl-stat">DL <strong>{p.one_rm_deadlift_kg}kg</strong></span>}
-                          </div>
-                          <button className="rost-item-del" title="Supprimer" onClick={async () => { await deletePerformanceMetric(p.slug); setPerf((x) => x.filter((y) => y.id !== p.id)); }}>✕</button>
-                        </div>))}</div>}
                   </article>
                 )}
               </div>
@@ -884,7 +588,7 @@ export default function AuroraProfil() {
                 : !nutrition ? (
                   <form className="rost-form" onSubmit={async (e) => {
                     e.preventDefault(); const fd = new FormData(e.currentTarget); setSavingNutrition(true); setNutritionErr('');
-                    try { setNutrition(await upsertNutrition({ diet_type: fd.get('diet_type') || 'omnivore', main_goal: fd.get('main_goal') || 'maintenance', meals_per_day: fd.get('meals_per_day') ? Number(fd.get('meals_per_day')) : 3, snacks_per_day: fd.get('snacks_per_day') ? Number(fd.get('snacks_per_day')) : 0, practices_if: fd.get('practices_if') === 'true', fasting_window_hours: fd.get('fasting_window_hours') ? Number(fd.get('fasting_window_hours')) : null, cooking_level: fd.get('cooking_level') || 'intermediate', hydration_target_ml: fd.get('hydration_target_ml') ? Number(fd.get('hydration_target_ml')) : null, supplements: [], budget_per_day_eur: fd.get('budget_per_day_eur') ? Number(fd.get('budget_per_day_eur')) : null })); }
+                    try { setNutrition(await upsertNutrition({ diet_type: fd.get('diet_type') || 'omnivore', main_goal: fd.get('main_goal') || 'maintenance', meals_per_day: fd.get('meals_per_day') ? Number(fd.get('meals_per_day')) : 3, snacks_per_day: fd.get('snacks_per_day') ? Number(fd.get('snacks_per_day')) : 0, practices_if: fd.get('practices_if') === 'true', fasting_window_hours: fd.get('fasting_window_hours') ? Number(fd.get('fasting_window_hours')) : null, cooking_level: fd.get('cooking_level') || 'intermediate', budget_per_day_eur: fd.get('budget_per_day_eur') ? Number(fd.get('budget_per_day_eur')) : null })); }
                     catch (err: unknown) { setNutritionErr(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')); } setSavingNutrition(false);
                   }}>
                     <div className="rost-form-grid">
@@ -895,7 +599,6 @@ export default function AuroraProfil() {
                       <label className="rost-form-group"><span>Niveau cuisine</span><select className="rost-form-select" name="cooking_level"><option value="beginner">Débutant</option><option value="intermediate">Intermédiaire</option><option value="advanced">Expert</option></select></label>
                       <label className="rost-form-group"><span>Jeûne IF</span><select className="rost-form-select" name="practices_if"><option value="false">Non</option><option value="true">Oui</option></select></label>
                       <label className="rost-form-group"><span>Fenêtre jeûne (h)</span><input className="rost-form-input" name="fasting_window_hours" type="number" min="8" max="24" placeholder="16" /></label>
-                      <label className="rost-form-group"><span>Hydratation (ml)</span><input className="rost-form-input" name="hydration_target_ml" type="number" min="500" max="5000" step="100" placeholder="2000" /></label>
                       <label className="rost-form-group"><span>Budget / jour (€)</span><input className="rost-form-input" name="budget_per_day_eur" type="number" min="0" max="100" step="0.5" placeholder="15" /></label>
                     </div>
                     {nutritionErr && <p className="rost-error">{nutritionErr}</p>}
@@ -904,7 +607,7 @@ export default function AuroraProfil() {
                 ) : editingNutrition ? (
                   <form className="rost-form" onSubmit={async (e) => {
                     e.preventDefault(); const fd = new FormData(e.currentTarget); setSavingNutrition(true); setNutritionErr('');
-                    try { setNutrition(await upsertNutrition({ diet_type: fd.get('diet_type') || nutrition.diet_type, main_goal: fd.get('main_goal') || nutrition.main_goal, meals_per_day: fd.get('meals_per_day') ? Number(fd.get('meals_per_day')) : nutrition.meals_per_day, snacks_per_day: fd.get('snacks_per_day') ? Number(fd.get('snacks_per_day')) : nutrition.snacks_per_day, practices_if: fd.get('practices_if') === 'true', fasting_window_hours: fd.get('fasting_window_hours') ? Number(fd.get('fasting_window_hours')) : nutrition.fasting_window_hours, cooking_level: fd.get('cooking_level') || nutrition.cooking_level, hydration_target_ml: fd.get('hydration_target_ml') ? Number(fd.get('hydration_target_ml')) : nutrition.hydration_target_ml, supplements: nutrition.supplements, budget_per_day_eur: fd.get('budget_per_day_eur') ? Number(fd.get('budget_per_day_eur')) : nutrition.budget_per_day_eur })); setEditingNutrition(false); }
+                    try { setNutrition(await upsertNutrition({ diet_type: fd.get('diet_type') || nutrition.diet_type, main_goal: fd.get('main_goal') || nutrition.main_goal, meals_per_day: fd.get('meals_per_day') ? Number(fd.get('meals_per_day')) : nutrition.meals_per_day, snacks_per_day: fd.get('snacks_per_day') ? Number(fd.get('snacks_per_day')) : nutrition.snacks_per_day, practices_if: fd.get('practices_if') === 'true', fasting_window_hours: fd.get('fasting_window_hours') ? Number(fd.get('fasting_window_hours')) : nutrition.fasting_window_hours, cooking_level: fd.get('cooking_level') || nutrition.cooking_level, budget_per_day_eur: fd.get('budget_per_day_eur') ? Number(fd.get('budget_per_day_eur')) : nutrition.budget_per_day_eur })); setEditingNutrition(false); }
                     catch (err: unknown) { setNutritionErr(apiErrorMessage(err, err instanceof Error ? err.message : 'Erreur')); } setSavingNutrition(false);
                   }}>
                     <div className="rost-form-grid">
@@ -915,7 +618,6 @@ export default function AuroraProfil() {
                       <label className="rost-form-group"><span>Niveau cuisine</span><select className="rost-form-select" name="cooking_level" defaultValue={nutrition.cooking_level ?? ''}><option value="beginner">Débutant</option><option value="intermediate">Intermédiaire</option><option value="advanced">Expert</option></select></label>
                       <label className="rost-form-group"><span>Jeûne IF</span><select className="rost-form-select" name="practices_if" defaultValue={nutrition.practices_if ? 'true' : 'false'}><option value="false">Non</option><option value="true">Oui</option></select></label>
                       <label className="rost-form-group"><span>Fenêtre jeûne (h)</span><input className="rost-form-input" name="fasting_window_hours" type="number" min="8" max="24" defaultValue={nutrition.fasting_window_hours ?? ''} /></label>
-                      <label className="rost-form-group"><span>Hydratation (ml)</span><input className="rost-form-input" name="hydration_target_ml" type="number" min="500" max="5000" step="100" defaultValue={nutrition.hydration_target_ml ?? ''} /></label>
                       <label className="rost-form-group"><span>Budget / jour (€)</span><input className="rost-form-input" name="budget_per_day_eur" type="number" min="0" max="100" step="0.5" defaultValue={nutrition.budget_per_day_eur ?? ''} /></label>
                     </div>
                     {nutritionErr && <p className="rost-error">{nutritionErr}</p>}
@@ -928,12 +630,10 @@ export default function AuroraProfil() {
                       <Stat label="Objectif" value={cap(nutrition.main_goal)} />
                       <Stat label="Repas/jour" value={fmt(nutrition.meals_per_day)} />
                       <Stat label="Collations" value={fmt(nutrition.snacks_per_day)} />
-                      {nutrition.hydration_target_ml != null && <Stat label="Hydratation" value={nutrition.hydration_target_ml} unit=" ml" />}
                       {nutrition.budget_per_day_eur != null && <Stat label="Budget/jour" value={nutrition.budget_per_day_eur} unit=" €" />}
                       <Stat label="Jeûne IF" value={nutrition.practices_if ? `Oui${nutrition.fasting_window_hours ? ` (${nutrition.fasting_window_hours}h)` : ''}` : 'Non'} />
                       <Stat label="Cuisine" value={cap(nutrition.cooking_level)} />
                     </div>
-                    {nutrition.supplements.length > 0 && <div className="rost-chips" style={{ marginTop: 12 }}>{nutrition.supplements.map((s) => <span key={s} className="rost-chip">{cap(s)}</span>)}</div>}
                     {canWriteProfile && <div className="rost-card-foot"><button className="rost-btn" onClick={() => setEditingNutrition(true)}>Modifier</button></div>}
                   </>
                 )}
@@ -945,22 +645,13 @@ export default function AuroraProfil() {
                       <span className="rost-card-title">Aliments exclus</span>
                       <button className="rost-btn" onClick={() => setShowAddExcluded((v) => !v)}>{showAddExcluded ? '✕' : '+ Ajouter'}</button>
                     </div>
+              <p className="rost-card-intro">
+                Aliments et allergènes à écarter de vos recettes et menus (ex : arachide, gluten, lactose).
+                Cliquez sur un aliment pour le retirer.
+              </p>
               {showAddExcluded && <ExcludedFoodForm onAdd={async () => { setExcluded(await getExcludedFoods()); setShowAddExcluded(false); }} onCancel={() => setShowAddExcluded(false)} addFn={addExcludedFood} />}
               {!loading && excluded.length === 0 && !showAddExcluded ? <p className="rost-empty">Aucun aliment exclu</p>
-                : <div className="rost-chips">{excluded.map((f) => <span key={f.id} className="rost-chip rost-chip-red" title={f.reason ?? undefined} style={{ cursor: 'pointer' }} onClick={async () => { await deleteExcludedFood(f.slug); setExcluded((p) => p.filter((x) => x.id !== f.id)); }}>{f.food_name} ✕</span>)}</div>}
-                  </article>
-                )}
-                {nutritionSection === 'allergies' && (
-                  <article className="rost-card">
-                    <div className="rost-card-head"><span className="rost-card-title">Allergies & intolérances</span><button className="rost-btn" onClick={() => setShowAddAllergy((v) => !v)}>{showAddAllergy ? '✕' : '+ Ajouter'}</button></div>
-              {showAddAllergy && <AllergyForm onAdd={async () => { setAllergies(await getAllergies()); setShowAddAllergy(false); }} onCancel={() => setShowAddAllergy(false)} addFn={addAllergy} />}
-              {loading ? <div className="rost-skel" style={{ height: 80 }} /> : allergies.length === 0 && !showAddAllergy ? <p className="rost-empty">Aucune allergie déclarée</p>
-                : <div className="rost-item-list">{allergies.map((a) => (
-                  <div className="rost-item" key={a.id}>
-                    <span className="rost-item-dot red" />
-                    <div className="rost-item-content"><div className="rost-item-title">{cap(a.allergen)}</div><div className="rost-item-sub">Sévérité : {cap(a.severity)}</div>{a.notes && <div className="rost-item-sub">{a.notes}</div>}</div>
-                    <button className="rost-item-del" title="Supprimer" onClick={async () => { await deleteAllergy(a.slug); setAllergies((x) => x.filter((y) => y.id !== a.id)); }}>✕</button>
-                  </div>))}</div>}
+                : <div className="rost-chips">{excluded.map((f) => <span key={f.id} className="rost-chip rost-chip-red" style={{ cursor: 'pointer' }} onClick={async () => { await deleteExcludedFood(f.slug); setExcluded((p) => p.filter((x) => x.id !== f.id)); }}>{f.food_name} ✕</span>)}</div>}
                   </article>
                 )}
                 {nutritionSection === 'regles' && (
@@ -1001,20 +692,6 @@ export default function AuroraProfil() {
               {profile?.nutrition_rules_enabled && (
                 nutrition ? (
                   <div className="rost-rules-fields">
-                    <div className="rost-rule-field">
-                      <div className="rost-rule-field-head">
-                        <span className="rost-adjust-label">Intensité</span>
-                        <div className="rost-seg">
-                          {RULE_INTENSITIES.map(([lbl, val]) => (
-                            <button key={val} type="button"
-                              className={`rost-seg-btn ${nutrition.rules_aggressiveness === val ? 'is-active' : ''}`}
-                              onClick={() => saveRules({ rules_aggressiveness: val })}>{lbl}</button>
-                          ))}
-                        </div>
-                      </div>
-                      <p className="rost-rule-help">{INTENSITY_HELP[nutrition.rules_aggressiveness] ?? INTENSITY_HELP[1.0]}</p>
-                    </div>
-
                     <div className="rost-rule-field">
                       <div className="rost-rule-field-head">
                         <span className="rost-adjust-label">Variété · ±{rulesVariety}%</span>
@@ -1116,77 +793,12 @@ export default function AuroraProfil() {
                   if (pwdNew.length < 8) { setPwdErr('Au moins 8 caractères.'); return; }
                   setPwdSaving(true); setPwdErr(''); setPwdOk(false);
                   try {
-                    // E2E : le mot de passe de connexion ne (dé)verrouille PLUS le coffre
-                    // (modèle « passphrase de chiffrement séparée ») → on ne touche pas au
-                    // matériel de clés ici. Voir la carte « Passphrase de chiffrement ».
                     await changePassword(pwdCurrent, pwdNew);
                     setPwdOk(true); setPwdCurrent(''); setPwdNew(''); setPwdConfirm('');
                   }
                   catch (e: unknown) { setPwdErr(apiErrorMessage(e, 'Erreur lors du changement.')); }
                   setPwdSaving(false);
                 }}>{pwdSaving ? 'Enregistrement…' : 'Changer le mot de passe'}</button>
-              </div>
-            </article>
-
-            <article className="rost-card rost-grid-full">
-              <div className="rost-card-head"><span className="rost-card-title">Passphrase de chiffrement</span></div>
-              <p className="rost-rd-text" style={{ marginTop: -4 }}>
-                Distincte du mot de passe de connexion, elle protège vos menus et données de santé
-                (chiffrement de bout en bout). Avec elle ou votre code de récupération, vous retrouvez
-                vos données sur tous vos appareils. Ces actions nécessitent un coffre déverrouillé.
-              </p>
-
-              {/* Changer la passphrase : ré-enveloppe la UK (les données ne sont pas re-chiffrées). */}
-              <div className="rost-form" style={{ maxWidth: 420 }}>
-                <label className="rost-form-group"><span>Nouvelle passphrase</span><input type="password" className="rost-form-input" value={passNew} onChange={(e) => { setPassNew(e.target.value); setPassErr(''); setPassOk(false); }} autoComplete="new-password" placeholder="10 caractères minimum" /></label>
-                <label className="rost-form-group"><span>Confirmer</span><input type="password" className="rost-form-input" value={passConfirm} onChange={(e) => { setPassConfirm(e.target.value); setPassErr(''); setPassOk(false); }} autoComplete="new-password" /></label>
-                {passErr && <p className="rost-error">{passErr}</p>}
-                {passOk && <p className="rost-profil-ok">✓ Passphrase mise à jour.</p>}
-                <button className="rost-add-btn" disabled={passSaving || !passNew || !passConfirm} onClick={async () => {
-                  const uk = getUserKey();
-                  if (!uk) { setPassErr('Coffre verrouillé : reconnectez-vous pour changer votre passphrase.'); return; }
-                  if (passNew !== passConfirm) { setPassErr('Les passphrases ne correspondent pas.'); return; }
-                  if (passNew.length < 10) { setPassErr('Au moins 10 caractères.'); return; }
-                  setPassSaving(true); setPassErr(''); setPassOk(false);
-                  try {
-                    await rotateKeyMaterial(await rewrapForNewPassword(uk, passNew));
-                    setPassOk(true); setPassNew(''); setPassConfirm('');
-                  } catch (e: unknown) { setPassErr(apiErrorMessage(e, 'Erreur lors du changement de passphrase.')); }
-                  setPassSaving(false);
-                }}>{passSaving ? 'Enregistrement…' : 'Changer la passphrase'}</button>
-              </div>
-
-              {/* Régénérer le code de récupération (l'ancien est invalidé). */}
-              <div className="rost-form" style={{ maxWidth: 420, marginTop: 16 }}>
-                <span className="rost-pstat-label">Code de récupération</span>
-                {newRecoveryCode ? (
-                  <div className="rost-notice" role="alert">
-                    ⚠️ Notez ce code et conservez-le en lieu sûr : il ne sera plus jamais affiché et
-                    remplace tout code précédent.
-                    <pre style={{ fontSize: 16, letterSpacing: '0.12em', textAlign: 'center', padding: '12px 8px', margin: '12px 0 4px', borderRadius: 8, border: '1px solid var(--rule)', userSelect: 'all', whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflowWrap: 'anywhere' }}>{newRecoveryCode}</pre>
-                    <button className="rost-btn rost-btn-ghost" type="button" onClick={() => setNewRecoveryCode(null)}>J’ai noté mon code</button>
-                  </div>
-                ) : (
-                  <>
-                    {recErr && <p className="rost-error">{recErr}</p>}
-                    <button className="rost-btn rost-btn-ghost" disabled={recBusy} onClick={async () => {
-                      const uk = getUserKey();
-                      if (!uk) { setRecErr('Coffre verrouillé : reconnectez-vous pour régénérer votre code.'); return; }
-                      if (!window.confirm('Générer un nouveau code de récupération ? L’ancien sera immédiatement invalidé.')) return;
-                      setRecBusy(true); setRecErr('');
-                      try {
-                        const material = await getKeyMaterial();
-                        const params = material
-                          ? { memoryMiB: material.kdf_params.memory_mib, iterations: material.kdf_params.iterations, parallelism: material.kdf_params.parallelism }
-                          : undefined;
-                        const res = await rewrapForNewRecovery(uk, params);
-                        await rotateRecoveryMaterial(res.payload);
-                        setNewRecoveryCode(res.recoveryCode);
-                      } catch (e: unknown) { setRecErr(apiErrorMessage(e, 'Erreur lors de la régénération du code.')); }
-                      setRecBusy(false);
-                    }}>{recBusy ? 'Génération…' : 'Générer un nouveau code de récupération'}</button>
-                  </>
-                )}
               </div>
             </article>
 
@@ -1244,13 +856,14 @@ export default function AuroraProfil() {
             return <>
               {/* Consentement santé (art. 9) */}
               <article className="rost-card rost-grid-full">
-                <div className="rost-card-head"><span className="rost-card-title">Consentement aux données de santé (art. 9)</span></div>
+                <div className="rost-card-head"><span className="rost-card-title">Consentement — objectif et cibles nutritionnelles (art. 9)</span></div>
                 <div className="rost-form">
                   <p className="rost-rd-text">
-                    Le traitement de vos données de santé (blessures, conditions médicales,
-                    médicaments, allergies, mensurations…) nécessite votre consentement explicite.
-                    Vous pouvez le retirer à tout moment ; vos données déjà enregistrées restent
-                    accessibles et supprimables, mais vous ne pourrez plus en ajouter sans consentement.{' '}
+                    Votre objectif, vos préférences, vos aliments exclus et vos cibles nutritionnelles
+                    peuvent révéler des informations liées à la santé : leur enregistrement nécessite
+                    votre consentement explicite. Poids, taille, âge et sexe ne quittent jamais cet
+                    appareil. Vous pouvez retirer ce consentement à tout moment ; les données déjà
+                    enregistrées restent consultables et supprimables.{' '}
                     <a href="/confidentialite" target="_blank" rel="noopener noreferrer">Politique de confidentialité</a>.
                   </p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -1282,8 +895,9 @@ export default function AuroraProfil() {
                 <div className="rost-card-head"><span className="rost-card-title">Exporter mes données (art. 20)</span></div>
                 <div className="rost-form">
                   <p className="rost-rd-text">
-                    Téléchargez l’ensemble de vos données personnelles (identité, profil et santé,
-                    menus, notifications) dans un fichier JSON portable.
+                    Téléchargez l’ensemble de vos données personnelles conservées par nos services
+                    (identité, profil nutritionnel, menus, notifications) dans un fichier JSON portable.
+                    Vos données physiques, stockées sur cet appareil, n’en font pas partie.
                   </p>
                   <button className="rost-add-btn" disabled={exporting} onClick={downloadExport} style={{ maxWidth: 280 }}>
                     {exporting ? 'Préparation…' : 'Télécharger mes données (JSON)'}
@@ -1298,7 +912,7 @@ export default function AuroraProfil() {
                 <div className="rost-form" style={{ maxWidth: 480 }}>
                   <p className="rost-rd-text">
                     ⚠️ Cette action est <strong>irréversible</strong>. Votre compte et toutes vos
-                    données (profil et santé, menus, notifications) seront supprimés définitivement
+                    données (profil nutritionnel, menus, notifications) seront supprimés définitivement
                     et la suppression est <strong>propagée à tous les services</strong>. Pour
                     confirmer, saisissez <strong>SUPPRIMER</strong> ci-dessous.
                   </p>
