@@ -3,10 +3,8 @@ import { login as apiLogin, verifyMfa as apiVerifyMfa } from '../api/endpoints';
 import { useAuthContext } from '../context/AuthContext';
 import { apiErrorMessage } from '../utils/apiError';
 
-// E2E : le coffre n'est PAS déverrouillé ici. Le mot de passe de connexion ne
-// dérive plus la clé de chiffrement (modèle « passphrase de coffre séparée ») :
-// une fois la session établie, la page Login redirige vers /vault (cf. VaultGate),
-// qui demande la passphrase de chiffrement (ou la crée au 1er passage).
+// Une fois la session établie, la page Login redirige vers la cible
+// (parcours en attente ou /dashboard).
 
 export function useAuth() {
   const { status, setSession } = useAuthContext();
@@ -28,7 +26,7 @@ export function useAuth() {
         setMfaRequired(true);
       } else {
         // SEC-05 : le refresh est posé en cookie HttpOnly par le backend ;
-        // on ne garde que l'access token en mémoire. La redirection (→ /vault)
+        // on ne garde que l'access token en mémoire. La redirection
         // est portée par l'effet `isAuthenticated` de la page Login.
         setSession(result.access_token);
       }
@@ -47,7 +45,7 @@ export function useAuth() {
       setSession(tokens.access_token);
       setMfaRequired(false);
       setMfaToken(null);
-      // Redirection (→ /vault) portée par l'effet `isAuthenticated` de Login.
+      // Redirection portée par l'effet `isAuthenticated` de Login.
     } catch (err: unknown) {
       setError(apiErrorMessage(err, 'Code invalide'));
     } finally {

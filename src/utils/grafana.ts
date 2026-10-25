@@ -2,9 +2,9 @@ import axios from 'axios';
 
 // Construit une recherche Loki prête à coller dans Grafana à partir d'une erreur
 // d'appel API. Quand la réponse porte l'en-tête `X-Trace-Id` (posé par le
-// RequestLoggingMiddleware backend), on cible la requête exacte via le label
-// Loki `trace_id`. Sinon (service injoignable, pas de réponse HTTP) on retombe
-// sur une recherche large scopée au service concerné.
+// RequestLoggingMiddleware backend), on cible la requête exacte via la
+// métadonnée structurée Loki `trace_id`. Sinon (service injoignable, pas de
+// réponse HTTP) on retombe sur une recherche large scopée au service concerné.
 
 const GRAFANA_BASE = 'https://grafana.localhost';
 const LOKI_DATASOURCE_UID = 'loki';
@@ -51,10 +51,11 @@ function exploreUrl(query: string): string {
  */
 export function grafanaHint(e: unknown, service: string): GrafanaHint {
   const traceId = traceIdFromError(e);
-  // `trace_id` et `level` sont tous deux des labels Loki (extraits par promtail),
-  // donc directement utilisables dans le sélecteur de flux.
+  // `level` est un label Loki ; `trace_id` est une métadonnée structurée
+  // (extraite par Alloy) : filtre après le sélecteur de flux. Une trace traverse
+  // plusieurs services, d'où le sélecteur sur tous les services.
   const query = traceId
-    ? `{trace_id="${traceId}"}`
+    ? `{service=~".+"} | trace_id="${traceId}"`
     : `{service="${service}", level="error"}`;
   return { query, url: exploreUrl(query), hasTrace: Boolean(traceId) };
 }

@@ -385,7 +385,6 @@ export interface SportsProfileResponse {
   sessions_per_week: number;
   avg_session_duration_min: number;
   avg_intensity_rpe: number;
-  resting_heart_rate_bpm: number | null;
   updated_at: string;
 }
 
@@ -393,11 +392,6 @@ export interface LifestyleProfileResponse {
   id: string;
   slug: string;
   profession_activity_level: string | null;
-  stress_level: string | null;
-  sleep_hours: number | null;
-  chronotype: string | null;
-  alcohol_frequency: string | null;
-  is_smoker: boolean;
   sedentary_hours_per_day: number | null;
   updated_at: string;
 }
@@ -414,76 +408,12 @@ export interface NutritionPreferencesResponse {
   cooking_level: string | null;
   cooking_time_available: string | null;
   cooking_for: string | null;
-  hydration_target_ml: number | null;
-  supplements: string[];
   budget_per_day_eur: number | null;
   excluded_foods: string[];
-  rules_aggressiveness: number;
   rules_variety_pct: number;
   rules_override_calories: number | null;
   rules_override_proteines: number | null;
   updated_at: string;
-}
-
-export interface BodyCompositionResponse {
-  id: string;
-  slug: string;
-  measured_at: string;
-  body_fat_percentage: number | null;
-  lean_mass_kg: number | null;
-  bone_mass_kg: number | null;
-  water_percentage: number | null;
-  created_at: string;
-}
-
-export interface BodyMeasurementsResponse {
-  id: string;
-  slug: string;
-  measured_at: string;
-  waist_cm: number | null;
-  hips_cm: number | null;
-  chest_cm: number | null;
-  shoulders_cm: number | null;
-  left_arm_cm: number | null;
-  right_arm_cm: number | null;
-  left_thigh_cm: number | null;
-  right_thigh_cm: number | null;
-  created_at: string;
-}
-
-export interface PerformanceMetricResponse {
-  id: string;
-  slug: string;
-  measured_at: string;
-  vo2max: number | null;
-  vma_kmh: number | null;
-  ftp_watts: number | null;
-  one_rm_squat_kg: number | null;
-  one_rm_bench_press_kg: number | null;
-  one_rm_deadlift_kg: number | null;
-  one_rm_overhead_press_kg: number | null;
-  created_at: string;
-}
-
-export interface InjuryResponse {
-  id: string;
-  slug: string;
-  body_part: string;
-  injury_type: string;
-  is_current: boolean;
-  is_chronic: boolean;
-  diagnosed_at: string | null;
-  notes: string | null;
-  created_at: string;
-}
-
-export interface FoodAllergyResponse {
-  id: string;
-  slug: string;
-  allergen: string;
-  severity: string;
-  notes: string | null;
-  created_at: string;
 }
 
 export interface ExcludedFoodResponse {
@@ -491,25 +421,6 @@ export interface ExcludedFoodResponse {
   slug: string;
   food_name: string;
   reason: string | null;
-  created_at: string;
-}
-
-export interface MedicalConditionResponse {
-  id: string;
-  slug: string;
-  category: string;
-  condition_name: string;
-  is_current: boolean;
-  notes: string | null;
-  created_at: string;
-}
-
-export interface MedicationResponse {
-  id: string;
-  slug: string;
-  medication_name: string;
-  impacts_metabolism: boolean;
-  notes: string | null;
   created_at: string;
 }
 

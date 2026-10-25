@@ -1,13 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { register as apiRegister, login as apiLogin, setHealthConsent } from '../api/endpoints';
-// Profil/santé écrits dans le coffre chiffré (E2E) — le vault est déverrouillé
-// juste avant (setUserKey après enrollAccount). Cf. api/healthDoc.ts.
+// Corps et activité restent sur l'appareil ; seuls l'objectif, les préférences
+// et les cibles calculées partent au serveur. Cf. api/healthDoc.ts.
 import { createProfile, upsertSports, upsertLifestyle, upsertNutrition } from '../api/healthDoc';
 import ThemeSwitch from '../components/ThemeSwitch';
-import { enrollAccount } from '@nutri/e2e-core';
-import { enrollKeyMaterial } from '../api/e2eKeys';
-import { setUserKey } from '../crypto/vault';
 import { useAuthContext } from '../context/AuthContext';
 import { consumePostLoginRedirect } from '../utils/postLoginRedirect';
 import { apiErrorMessage } from '../utils/apiError';
@@ -19,16 +16,16 @@ type FD = {
   email: string; password: string;
   date_of_birth: string; biological_sex: string; height_cm: string; weight_kg: string; target_weight_kg: string;
   practice_level: string; sessions_per_week: string; avg_session_duration_min: string;
-  profession_activity_level: string; stress_level: string; sleep_hours: string; chronotype: string; alcohol_frequency: string; is_smoker: string;
-  diet_type: string; main_goal: string; meals_per_day: string; snacks_per_day: string; practices_if: string; fasting_window_hours: string; cooking_level: string; hydration_target_ml: string; budget_per_day_eur: string;
+  profession_activity_level: string; sedentary_hours_per_day: string;
+  diet_type: string; main_goal: string; meals_per_day: string; snacks_per_day: string; practices_if: string; fasting_window_hours: string; cooking_level: string; budget_per_day_eur: string;
 };
 
 const INIT: FD = {
   email: '', password: '',
   date_of_birth: '', biological_sex: '', height_cm: '', weight_kg: '', target_weight_kg: '',
   practice_level: 'beginner', sessions_per_week: '3', avg_session_duration_min: '60',
-  profession_activity_level: 'sedentary', stress_level: 'moderate', sleep_hours: '8', chronotype: 'intermediate', alcohol_frequency: 'never', is_smoker: 'false',
-  diet_type: 'omnivore', main_goal: 'maintenance', meals_per_day: '3', snacks_per_day: '0', practices_if: 'false', fasting_window_hours: '', cooking_level: 'intermediate', hydration_target_ml: '2000', budget_per_day_eur: '',
+  profession_activity_level: 'sedentary', sedentary_hours_per_day: '',
+  diet_type: 'omnivore', main_goal: 'maintenance', meals_per_day: '3', snacks_per_day: '0', practices_if: 'false', fasting_window_hours: '', cooking_level: 'intermediate', budget_per_day_eur: '',
 };
 
 function pwdChecks(p: string) {
@@ -66,17 +63,9 @@ export default function Register() {
   const [sportsList, setSportsList] = useState<string[]>([]);
   const [sportsInput, setSportsInput] = useState('');
   const [skipped, setSkipped]       = useState<Set<number>>(new Set());
-  // RGPD : acceptation de la politique de confidentialité (mention art. 9 — données
-  // de santé) obligatoire avant de créer le compte.
+  // RGPD : acceptation de la politique de confidentialité (mention art. 9 —
+  // objectif et cibles nutritionnelles) obligatoire avant de créer le compte.
   const [acceptedPolicy, setAcceptedPolicy] = useState(false);
-  // E2E : passphrase de chiffrement, DISTINCTE du mot de passe de connexion. C'est
-  // elle qui scelle le coffre (zero-knowledge) ; le serveur ne la voit jamais.
-  const [passphrase, setPassphrase] = useState('');
-  const [passphraseConfirm, setPassphraseConfirm] = useState('');
-  // E2E : code de récupération à afficher UNE fois après l'inscription des clés,
-  // + destination de redirection une fois le code acquitté.
-  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
-  const [pendingRedirect, setPendingRedirect] = useState<string>('/dashboard');
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState<string | null>(null);
   const navigate = useNavigate();
@@ -102,10 +91,7 @@ export default function Register() {
 
   const checks = pwdChecks(fd.password);
   const isPwdStrong = checks.minLength && checks.hasUpper && checks.hasDigit && checks.hasSpecial;
-  const PASSPHRASE_MIN = 10;
-  const isPassphraseValid = passphrase.length >= PASSPHRASE_MIN && passphrase === passphraseConfirm;
-  const isStep0Valid = fd.email.trim() !== '' && fd.password !== '' && isPwdStrong
-    && isPassphraseValid && acceptedPolicy;
+  const isStep0Valid = fd.email.trim() !== '' && fd.password !== '' && isPwdStrong && acceptedPolicy;
 
   const addSport = () => {
     const s = sportsInput.trim();
@@ -122,19 +108,11 @@ export default function Register() {
       if (!('access_token' in loginResult)) throw new Error('Réponse inattendue du serveur');
       setSession(loginResult.access_token);
 
-      // E2E : génère la User Key + code de récupération à partir de la PASSPHRASE
-      // de chiffrement (≠ mot de passe de connexion), enveloppe et inscrit le
-      // matériel de clés ; garde la UK en mémoire (coffre).
-      const enrollment = await enrollAccount(passphrase);
-      await enrollKeyMaterial(enrollment.payload);
-      setUserKey(enrollment.userKey);
-
-      // RGPD (art. 9) : la case « traitement de mes données de santé » est cochée
-      // (obligatoire à l'inscription) → on enregistre ce consentement explicite
-      // AVANT d'écrire le profil. Sinon le garde-fou `require_health_consent`
-      // rejette l'écriture du blob santé (403) et le profil saisi serait perdu
-      // (l'utilisateur se le verrait redemander ensuite). setHealthConsent
-      // rafraîchit aussi l'access token pour que le claim health_consent s'applique.
+      // RGPD (art. 9) : la case de consentement est cochée (obligatoire à
+      // l'inscription) → on enregistre ce consentement explicite AVANT d'écrire
+      // le profil. Sinon le garde-fou `require_health_consent` rejette l'envoi
+      // des préférences et des cibles (403). setHealthConsent rafraîchit aussi
+      // l'access token pour que le claim health_consent s'applique.
       await setHealthConsent(true);
 
       await createProfile({
@@ -152,19 +130,13 @@ export default function Register() {
           sessions_per_week:        Number(fd.sessions_per_week),
           avg_session_duration_min: Number(fd.avg_session_duration_min),
           avg_intensity_rpe:        5,
-          resting_heart_rate_bpm:   null,
         });
       }
 
       if (!currentSkipped.has(3)) {
         await upsertLifestyle({
           profession_activity_level: fd.profession_activity_level,
-          stress_level:              fd.stress_level,
-          sleep_hours:               fd.sleep_hours ? Number(fd.sleep_hours) : null,
-          chronotype:                fd.chronotype,
-          alcohol_frequency:         fd.alcohol_frequency,
-          is_smoker:                 fd.is_smoker === 'true',
-          sedentary_hours_per_day:   null,
+          sedentary_hours_per_day:   fd.sedentary_hours_per_day ? Number(fd.sedentary_hours_per_day) : null,
         });
       }
 
@@ -177,17 +149,12 @@ export default function Register() {
           practices_if:         fd.practices_if === 'true',
           fasting_window_hours: fd.fasting_window_hours ? Number(fd.fasting_window_hours) : null,
           cooking_level:        fd.cooking_level,
-          hydration_target_ml:  fd.hydration_target_ml ? Number(fd.hydration_target_ml) : null,
           budget_per_day_eur:   fd.budget_per_day_eur  ? Number(fd.budget_per_day_eur)  : null,
-          supplements:          [],
         });
       }
 
-      // Inscription terminée : on affiche d'abord le code de récupération (une
-      // fois), puis on reprend un éventuel parcours en attente. `submitting.current`
-      // reste à true → le bounce auto ne court-circuite pas cet écran.
-      setPendingRedirect(consumePostLoginRedirect() ?? '/dashboard');
-      setRecoveryCode(enrollment.recoveryCode);
+      // Inscription terminée : on reprend un éventuel parcours en attente.
+      navigate(consumePostLoginRedirect() ?? '/dashboard', { replace: true });
     } catch (err: unknown) {
       submitting.current = false;
       setError(apiErrorMessage(err, 'Erreur lors de la création du compte'));
@@ -217,44 +184,6 @@ export default function Register() {
   };
 
   const cardWidth = step === 0 ? 380 : 500;
-
-  // Écran « code de récupération » : affiché une seule fois après l'inscription.
-  // Sans ce code, une réinitialisation de mot de passe = perte définitive des
-  // données chiffrées (zero-knowledge).
-  if (recoveryCode) {
-    return (
-      <div className="aurora-root rost-auth">
-        <div className="rost-auth-theme"><ThemeSwitch floating /></div>
-        <div className="rost-auth-card" style={{ maxWidth: 460 }}>
-          <h2 className="rost-auth-title">Votre code de récupération</h2>
-          <p className="rost-auth-sub">Notez-le et conservez-le en lieu sûr</p>
-          <div className="rost-notice" role="alert" style={{ marginTop: 12 }}>
-            ⚠️ Vos données de santé sont chiffrées de bout en bout. <strong>Ce code est
-            le seul moyen de les récupérer si vous oubliez votre passphrase de chiffrement.</strong>{' '}
-            Il ne vous sera plus jamais affiché et nous ne pouvons pas le régénérer.
-            <br />
-            Avec votre passphrase <em>ou</em> ce code, vous retrouvez vos données{' '}
-            <strong>sur tous vos appareils</strong> (web et mobile).
-          </div>
-          <pre
-            style={{
-              fontSize: 18, letterSpacing: '0.15em', textAlign: 'center',
-              padding: '16px 8px', margin: '16px 0', borderRadius: 8,
-              border: '1px solid var(--rule)', userSelect: 'all',
-              whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflowWrap: 'anywhere',
-            }}
-          >{recoveryCode}</pre>
-          <button
-            type="button"
-            className="rost-add-btn rost-auth-submit"
-            onClick={() => navigate(pendingRedirect, { replace: true })}
-          >
-            J’ai noté mon code de récupération
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="aurora-root rost-auth">
@@ -306,36 +235,15 @@ export default function Register() {
                 <PasswordStrength password={fd.password} />
               </div>
 
-              <div className="rost-reg-field">
-                <label htmlFor="passphrase">Passphrase de chiffrement</label>
-                <input id="passphrase" type="password" value={passphrase}
-                  onChange={(e) => setPassphrase(e.target.value)}
-                  placeholder={`${PASSPHRASE_MIN} caractères minimum`} autoComplete="off"
-                  required disabled={loading} />
-                <p className="rost-reg-hint" style={{ fontSize: 12, lineHeight: 1.4, marginTop: 4, opacity: 0.8 }}>
-                  Protège vos menus et données de santé. <strong>Différente</strong> du mot de passe
-                  ci-dessus, elle n’est jamais transmise : nous ne pouvons ni la voir ni la réinitialiser.
-                </p>
-              </div>
-
-              <div className="rost-reg-field">
-                <label htmlFor="passphrase2">Confirmer la passphrase</label>
-                <input id="passphrase2" type="password" value={passphraseConfirm}
-                  onChange={(e) => setPassphraseConfirm(e.target.value)}
-                  placeholder="••••••••••" autoComplete="off" required disabled={loading} />
-                {passphraseConfirm.length > 0 && passphrase !== passphraseConfirm && (
-                  <p className="rost-error" style={{ marginTop: 4 }}>Les deux passphrases ne correspondent pas.</p>
-                )}
-              </div>
-
               <label className="rost-reg-consent" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, lineHeight: 1.5, marginTop: 4 }}>
                 <input type="checkbox" checked={acceptedPolicy} disabled={loading}
                   onChange={(e) => setAcceptedPolicy(e.target.checked)} style={{ marginTop: 2 }} required />
                 <span>
                   J’ai lu et j’accepte la{' '}
                   <Link to="/confidentialite" target="_blank" rel="noopener noreferrer">politique de confidentialité</Link>,
-                  y compris le traitement de mes <strong>données de santé</strong> (art. 9 RGPD) sur la
-                  base de mon consentement explicite, que je peux retirer à tout moment.
+                  y compris le traitement de mon <strong>objectif et de mes cibles nutritionnelles</strong>{' '}
+                  (art. 9 RGPD) sur la base de mon consentement explicite, que je peux retirer à tout
+                  moment. Poids, taille, âge et sexe restent sur cet appareil.
                 </span>
               </label>
             </>}
@@ -344,7 +252,7 @@ export default function Register() {
             {step === 1 && <>
               <div className="rost-reg-header">
                 <h2>Données physiques</h2>
-                <p>Vos informations corporelles (optionnel)</p>
+                <p>Vos informations corporelles, conservées sur cet appareil (optionnel)</p>
               </div>
 
               <div className="rost-reg-grid">
@@ -452,7 +360,7 @@ export default function Register() {
             {step === 3 && <>
               <div className="rost-reg-header">
                 <h2>Mode de vie</h2>
-                <p>Vos habitudes quotidiennes (optionnel)</p>
+                <p>Votre activité au quotidien (optionnel)</p>
               </div>
 
               <div className="rost-reg-grid">
@@ -467,41 +375,9 @@ export default function Register() {
                   </select>
                 </div>
                 <div className="rost-reg-field">
-                  <label>Niveau de stress</label>
-                  <select value={fd.stress_level} onChange={upd('stress_level')} disabled={loading}>
-                    <option value="low">Faible</option>
-                    <option value="moderate">Modéré</option>
-                    <option value="high">Élevé</option>
-                  </select>
-                </div>
-                <div className="rost-reg-field">
-                  <label>Heures de sommeil</label>
-                  <input type="number" value={fd.sleep_hours} onChange={upd('sleep_hours')}
-                    placeholder="8" min="3" max="14" step="0.5" disabled={loading} />
-                </div>
-                <div className="rost-reg-field">
-                  <label>Chronotype</label>
-                  <select value={fd.chronotype} onChange={upd('chronotype')} disabled={loading}>
-                    <option value="morning">Lève-tôt</option>
-                    <option value="intermediate">Intermédiaire</option>
-                    <option value="evening">Couche-tard</option>
-                  </select>
-                </div>
-                <div className="rost-reg-field">
-                  <label>Fréquence alcool</label>
-                  <select value={fd.alcohol_frequency} onChange={upd('alcohol_frequency')} disabled={loading}>
-                    <option value="never">Jamais</option>
-                    <option value="occasional">Occasionnel</option>
-                    <option value="moderate">Modéré</option>
-                    <option value="regular">Régulier</option>
-                  </select>
-                </div>
-                <div className="rost-reg-field">
-                  <label>Fumeur</label>
-                  <select value={fd.is_smoker} onChange={upd('is_smoker')} disabled={loading}>
-                    <option value="false">Non</option>
-                    <option value="true">Oui</option>
-                  </select>
+                  <label>Heures assis / jour</label>
+                  <input type="number" value={fd.sedentary_hours_per_day} onChange={upd('sedentary_hours_per_day')}
+                    placeholder="8" min="0" max="24" step="0.5" disabled={loading} />
                 </div>
               </div>
             </>}
@@ -570,11 +446,6 @@ export default function Register() {
                       placeholder="16" min="8" max="24" disabled={loading} />
                   </div>
                 )}
-                <div className="rost-reg-field">
-                  <label>Hydratation cible (ml)</label>
-                  <input type="number" value={fd.hydration_target_ml} onChange={upd('hydration_target_ml')}
-                    placeholder="2000" min="500" max="5000" step="100" disabled={loading} />
-                </div>
                 <div className="rost-reg-field">
                   <label>Budget / jour (€)</label>
                   <input type="number" value={fd.budget_per_day_eur} onChange={upd('budget_per_day_eur')}

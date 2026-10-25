@@ -1,9 +1,8 @@
-// Export de la liste de courses CÔTÉ CLIENT (E2E zero-knowledge) : le serveur ne
-// voit plus le menu, donc CSV et PDF sont générés localement à partir de la liste
-// déchiffrée. Remplace les anciens endpoints serveur d'export.
+// Export de la liste de courses côté client : CSV et PDF générés localement à
+// partir de la liste renvoyée par service-menu (libellés de rayon de la page).
 
 import { jsPDF } from 'jspdf';
-import type { ShoppingItem } from '@nutri/e2e-core';
+import type { ShoppingItem } from '../types';
 
 export interface ShoppingExportData {
   startDate: string;
